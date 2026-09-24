@@ -20,6 +20,7 @@ function App() {
   const [pageSize, setPageSize] = useState<keyof typeof pageSizes>('Original')
   const [fileName, setFileName] = useState('papercut-export')
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('papercut-theme') === 'dark')
+  const [themeWave, setThemeWave] = useState(false)
   const [watermark, setWatermark] = useState('')
   const [watermarkOpacity, setWatermarkOpacity] = useState(35)
   const [progress, setProgress] = useState(0)
@@ -32,6 +33,13 @@ function App() {
     document.documentElement.dataset.theme = theme
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#202522' : '#f2eee7')
   }, [darkMode])
+  useEffect(() => {
+    history.scrollRestoration = 'manual'
+    const resetScroll = () => window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    resetScroll()
+    const frame = window.requestAnimationFrame(resetScroll)
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
   const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
@@ -62,6 +70,10 @@ function App() {
       root.dataset.themeSweep = nextDark ? 'to-dark' : 'to-light'
       transitionDocument.startViewTransition(applyTheme).finished.finally(() => { delete root.dataset.themeSweep })
     } else {
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setThemeWave(true)
+        window.setTimeout(() => setThemeWave(false), 900)
+      }
       applyTheme()
     }
   }
@@ -219,6 +231,7 @@ function App() {
 
   return (
     <main className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
+      {themeWave && <div className={`theme-wave ${darkMode ? 'to-dark' : 'to-light'}`} aria-hidden="true" />}
       <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{darkMode ? '☼' : '◐'}</button></header>
       <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1>Photo to PDF<br /><em>converter.</em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">

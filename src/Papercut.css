@@ -1,4 +1,9 @@
-.app-shell { min-height: 100vh; max-width: 1240px; margin: 0 auto; padding: 0 48px; box-sizing: border-box; }
+.app-shell { min-height: 100vh; max-width: 1240px; margin: 0 auto; padding: 0 48px; box-sizing: border-box; position: relative; isolation: isolate; }
+.theme-wave { position: fixed; inset: -20%; z-index: 50; pointer-events: none; background: var(--paper); animation: wave-reveal 900ms cubic-bezier(.65, 0, .35, 1) both; }
+.theme-wave.to-dark { clip-path: polygon(0 100%, 0 100%, 100% 0, 100% 0); }
+.theme-wave.to-light { clip-path: polygon(-20% -20%, 100% -20%, 100% 0, 0 100%); animation-name: wave-return; }
+@keyframes wave-reveal { from { clip-path: polygon(0 100%, 0 100%, 100% 0, 100% 0); } to { clip-path: polygon(-20% 120%, -20% -20%, 120% -20%, 120% 120%); } }
+@keyframes wave-return { from { clip-path: polygon(-20% -20%, 100% -20%, 100% 0, 0 100%); } to { clip-path: polygon(-20% 120%, -20% -20%, 120% -20%, 120% 120%); } }
 .app-shell > * { animation: rise-in 700ms cubic-bezier(.22, 1, .36, 1) both; }
 .app-shell > *:nth-child(2) { animation-delay: 70ms; }.app-shell > *:nth-child(3) { animation-delay: 140ms; }.app-shell > *:nth-child(4) { animation-delay: 210ms; }.app-shell > *:nth-child(5) { animation-delay: 280ms; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
