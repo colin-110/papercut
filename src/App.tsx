@@ -6,6 +6,7 @@ type Asset = { id: number; file: File; preview: string | null }
 const formatOptions = ['PDF', 'JPG', 'PNG', 'WEBP']
 const maxFileSize = 250 * 1024 * 1024
 const supportedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg']
+const pageSizes = { Original: null, A4: [595.28, 841.89], Letter: [612, 792] } as const
 function App() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [outputFormat, setOutputFormat] = useState('PDF')
@@ -15,6 +16,8 @@ function App() {
   const [exported, setExported] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [pageSize, setPageSize] = useState<keyof typeof pageSizes>('Original')
+  const [fileName, setFileName] = useState('papercut-export')
   const inputRef = useRef<HTMLInputElement>(null)
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -32,6 +35,7 @@ function App() {
   const removeAsset = (id: number) => setAssets((current) => { const asset = current.find((item) => item.id === id); if (asset?.preview) URL.revokeObjectURL(asset.preview); return current.filter((item) => item.id !== id) })
   const moveAsset = (id: number, direction: -1 | 1) => setAssets((current) => { const index = current.findIndex((asset) => asset.id === id); const nextIndex = index + direction; if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current; const next = [...current]; [next[index], next[nextIndex]] = [next[nextIndex], next[index]]; return next })
   const clearAll = () => { assets.forEach((asset) => asset.preview && URL.revokeObjectURL(asset.preview)); setAssets([]); setNotice(''); setError(''); setExported(false) }
+  const safeFileName = () => fileName.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'papercut-export'
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -90,13 +94,22 @@ function App() {
         continue
       }
       const canvas = await imageToCanvas(asset.file)
-      const page = output.addPage([canvas.width, canvas.height])
+      const targetSize = pageSizes[pageSize]
+      const page = output.addPage(targetSize ? [targetSize[0], targetSize[1]] : [canvas.width, canvas.height])
       const bytes = await new Promise<ArrayBuffer>((resolve, reject) => canvas.toBlob((blob) => blob ? blob.arrayBuffer().then(resolve) : reject(new Error('Image encoding failed')), 'image/png'))
       const image = await output.embedPng(bytes)
-      page.drawImage(image, { x: 0, y: 0, width: canvas.width, height: canvas.height })
+      if (!targetSize) {
+        page.drawImage(image, { x: 0, y: 0, width: canvas.width, height: canvas.height })
+      } else {
+        const margin = 28
+        const scale = Math.min((targetSize[0] - margin * 2) / canvas.width, (targetSize[1] - margin * 2) / canvas.height)
+        const width = canvas.width * scale
+        const height = canvas.height * scale
+        page.drawImage(image, { x: (targetSize[0] - width) / 2, y: (targetSize[1] - height) / 2, width, height })
+      }
     }
     const pdfBytes = await output.save()
-    downloadBlob(new Blob([new Uint8Array(pdfBytes).buffer as ArrayBuffer], { type: 'application/pdf' }), 'papercut-export.pdf')
+    downloadBlob(new Blob([new Uint8Array(pdfBytes).buffer as ArrayBuffer], { type: 'application/pdf' }), `${safeFileName()}.pdf`)
   }
 
   const exportImages = async () => {
@@ -112,12 +125,12 @@ function App() {
       }
     }
     if (convertedPages.length === 1) {
-      downloadBlob(convertedPages[0], `papercut-page-01.${extension}`)
+      downloadBlob(convertedPages[0], `${safeFileName()}-page-01.${extension}`)
       return
     }
     const zip = new JSZip()
     convertedPages.forEach((blob, index) => zip.file(`page-${String(index + 1).padStart(2, '0')}.${extension}`, blob))
-    downloadBlob(await zip.generateAsync({ type: 'blob' }), `papercut-images-${extension}.zip`)
+    downloadBlob(await zip.generateAsync({ type: 'blob' }), `${safeFileName()}-images-${extension}.zip`)
   }
 
   const exportFiles = async () => {
@@ -149,7 +162,7 @@ function App() {
           {notice && <p className="intake-notice" role="status">{notice}</p>}
           <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className="file-row" key={asset.id}><div className={`file-thumb ${asset.preview ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
         </div>
-        <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div><label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div><button className={`export-button ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={exportFiles}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
+        <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div>{outputFormat === 'PDF' && <><label className="field-label quality-label" htmlFor="page-size">PAGE SIZE</label><select className="select-control" id="page-size" value={pageSize} onChange={(event) => setPageSize(event.target.value as keyof typeof pageSizes)}><option>Original</option><option>A4</option><option>Letter</option></select></>}<label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><label className="field-label quality-label" htmlFor="file-name">FILE NAME</label><input className="text-control" id="file-name" value={fileName} onChange={(event) => { setFileName(event.target.value); setExported(false) }} /><div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div><button className={`export-button ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={exportFiles}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
       </section>
       <section className="seo-content" aria-label="About Papercut"><div><p className="eyebrow">BUILT FOR THE BROWSER</p><h2>Photo to PDF conversion<br /><em>without the upload.</em></h2></div><div className="seo-copy"><p>Turn JPG, PNG, WEBP, GIF, or SVG images into a PDF, or convert PDF pages back to JPG, PNG, or WEBP. Papercut processes files locally on your device, so your documents do not need to leave your browser.</p><div className="trust-row"><span>✓ No account</span><span>✓ No upload</span><span>✓ Free to use</span></div><div className="faq-grid"><details><summary>Is Papercut free?</summary><p>Yes. Papercut is free to use and has no account or upload requirement.</p></details><details><summary>Can I convert multiple photos?</summary><p>Yes. Add multiple images, arrange their order, and export them as one PDF or a ZIP of images.</p></details></div></div></section>
       <footer><span>papercut / browser edition</span><span>{assets.length ? `${assets.length} file${assets.length > 1 ? 's' : ''} · ${formatBytes(totalSize)}` : 'ready when you are'} <i>●</i></span></footer>
