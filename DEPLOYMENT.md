@@ -49,6 +49,19 @@ These are provider subdomains, not custom domains that you own. A domain such as
 
 After deployment, add the public URL to the repository description and README. Do not add analytics or third-party scripts just to measure traffic unless they fit the privacy promise.
 
+## Google Indexing
+
+Google can crawl a public Vercel URL, but indexing is not immediate or guaranteed. After the first deployment:
+
+1. Open [Google Search Console](https://search.google.com/search-console/).
+2. Add the exact deployed URL as a URL-prefix property, for example `https://papercut.vercel.app/`.
+3. Verify ownership using the available Vercel or HTML verification method.
+4. Use **URL inspection** to request indexing for the homepage.
+5. Confirm `https://your-domain.example/robots.txt` is reachable and does not block crawling.
+6. Keep the site publicly accessible, fast, mobile-friendly, and useful before requesting indexing again.
+
+Google will index the page content and metadata, but it will not process user files during crawling. The converter requires a real browser session and JavaScript.
+
 ## GitHub Pages
 
 GitHub Pages is also suitable, but project pages are served below `/papercut/`. Set the Vite base path to `/papercut/` before deploying there. If using a custom domain, use `/` instead.
