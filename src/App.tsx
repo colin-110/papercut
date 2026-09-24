@@ -15,17 +15,18 @@ function App() {
   const [isDragging, setIsDragging] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exported, setExported] = useState(false)
+  const [doneInfo, setDoneInfo] = useState<{ name: string; size: string; leaving: boolean } | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [pageSize, setPageSize] = useState<keyof typeof pageSizes>('Original')
   const [fileName, setFileName] = useState('papercut-export')
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('papercut-theme') === 'dark')
-  const [themeWave, setThemeWave] = useState(false)
   const [watermark, setWatermark] = useState('')
   const [watermarkOpacity, setWatermarkOpacity] = useState(35)
   const [progress, setProgress] = useState(0)
   const [progressLabel, setProgressLabel] = useState('')
   const cancelRef = useRef(false)
+  const sweepingRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const theme = darkMode ? 'dark' : 'light'
@@ -40,6 +41,16 @@ function App() {
     const frame = window.requestAnimationFrame(resetScroll)
     return () => window.cancelAnimationFrame(frame)
   }, [])
+  useEffect(() => {
+    if (!doneInfo || doneInfo.leaving) return
+    const timer = window.setTimeout(() => setDoneInfo((current) => current && { ...current, leaving: true }), 3400)
+    return () => window.clearTimeout(timer)
+  }, [doneInfo])
+  useEffect(() => {
+    if (!doneInfo?.leaving) return
+    const timer = window.setTimeout(() => setDoneInfo(null), 600)
+    return () => window.clearTimeout(timer)
+  }, [doneInfo?.leaving])
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
   const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
@@ -59,23 +70,61 @@ function App() {
   const clearAll = () => { assets.forEach((asset) => asset.preview && URL.revokeObjectURL(asset.preview)); setAssets([]); setNotice(''); setError(''); setExported(false) }
   const safeFileName = () => fileName.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'papercut-export'
   const toggleTheme = () => {
+    if (sweepingRef.current) return
     const nextDark = !darkMode
     const root = document.documentElement
     const applyTheme = () => {
       flushSync(() => setDarkMode(nextDark))
       root.dataset.theme = nextDark ? 'dark' : 'light'
     }
-    const transitionDocument = document as Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } }
-    if (transitionDocument.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      root.dataset.themeSweep = nextDark ? 'to-dark' : 'to-light'
-      transitionDocument.startViewTransition(applyTheme).finished.finally(() => { delete root.dataset.themeSweep })
-    } else {
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        setThemeWave(true)
-        window.setTimeout(() => setThemeWave(false), 900)
-      }
-      applyTheme()
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { applyTheme(); return }
+    const doc = document as Document & { startViewTransition?: (update: () => void) => { ready: Promise<void>; finished: Promise<void> } }
+    if (doc.startViewTransition) {
+      sweepingRef.current = true
+      const transition = doc.startViewTransition(applyTheme)
+      transition.ready.then(() => {
+        const at = (x: number, y: number) => `${nextDark ? x : 100 - x}% ${nextDark ? y : 100 - y}%`
+        const shape = (pts: number[][]) => `polygon(${pts.map(([x, y]) => at(x, y)).join(', ')})`
+        root.animate(
+          { clipPath: [shape([[0, 100], [0, 100], [0, 100], [0, 100], [0, 100]]), shape([[0, 100], [0, 0], [0, 0], [100, 100], [100, 100]]), shape([[0, 100], [0, 0], [100, 0], [100, 0], [100, 100]])] },
+          { duration: 1100, easing: 'cubic-bezier(.55, 0, .1, 1)', pseudoElement: '::view-transition-new(root)', fill: 'both' },
+        )
+      }).catch(() => {})
+      transition.finished.finally(() => { sweepingRef.current = false })
+      return
     }
+    sweepingRef.current = true
+    const sweep = document.createElement('div')
+    const edge = document.createElement('i')
+    const fill = document.createElement('i')
+    sweep.className = 'theme-sweep'
+    edge.style.background = nextDark ? '#f17a64' : '#e65d48'
+    fill.style.background = nextDark ? '#202522' : '#f2eee7'
+    sweep.append(edge, fill)
+    document.body.append(sweep)
+    const setProgress = (p: number) => {
+      fill.style.setProperty('--p', String(p))
+      edge.style.setProperty('--p', String(Math.min(1, p + 0.09 * Math.sin(Math.PI * p))))
+    }
+    const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+    const run = (duration: number, from: number, to: number, done: () => void) => {
+      const start = performance.now()
+      const frame = (now: number) => {
+        const t = Math.min(1, (now - start) / duration)
+        setProgress(from + (to - from) * ease(t))
+        if (t < 1) requestAnimationFrame(frame)
+        else done()
+      }
+      requestAnimationFrame(frame)
+    }
+    setProgress(0)
+    run(760, 0, 1, () => {
+      applyTheme()
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        sweep.style.transform = 'rotate(180deg)'
+        run(760, 1, 0, () => { sweep.remove(); sweepingRef.current = false })
+      }))
+    })
   }
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
@@ -84,6 +133,7 @@ function App() {
     link.download = filename
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    setDoneInfo({ name: filename, size: formatBytes(blob.size), leaving: false })
   }
 
   const decorateCanvas = (canvas: HTMLCanvasElement) => {
@@ -231,7 +281,6 @@ function App() {
 
   return (
     <main className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
-      {themeWave && <div className={`theme-wave ${darkMode ? 'to-dark' : 'to-light'}`} aria-hidden="true" />}
       <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{darkMode ? '☼' : '◐'}</button></header>
       <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1>Photo to PDF<br /><em>converter.</em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">
@@ -247,6 +296,16 @@ function App() {
       </section>
       <section className="seo-content" aria-label="About Papercut"><div><p className="eyebrow">BUILT FOR THE BROWSER</p><h2>Photo to PDF conversion<br /><em>without the upload.</em></h2></div><div className="seo-copy"><p>Turn JPG, PNG, WEBP, GIF, or SVG images into a PDF, or convert PDF pages back to JPG, PNG, or WEBP. Papercut processes files locally on your device, so your documents do not need to leave your browser.</p><div className="trust-row"><span>✓ No account</span><span>✓ No upload</span><span>✓ Free to use</span></div><div className="faq-grid"><details><summary>Is Papercut free?</summary><p>Yes. Papercut is free to use and has no account or upload requirement.</p></details><details><summary>Can I convert multiple photos?</summary><p>Yes. Add multiple images, arrange their order, and export them as one PDF or a ZIP of images.</p></details></div></div></section>
       <footer><span>papercut / browser edition</span><span>{assets.length ? `${assets.length} file${assets.length > 1 ? 's' : ''} · ${formatBytes(totalSize)}` : 'ready when you are'} <i>●</i></span></footer>
+      {doneInfo && (
+        <div className={`airdrop ${doneInfo.leaving ? 'is-leaving' : ''}`} role="status" onClick={() => setDoneInfo((current) => current && { ...current, leaving: true })}>
+          <div className="airdrop-stage">
+            <i className="ring r1" /><i className="ring r2" /><i className="ring r3" />
+            <div className="airdrop-core"><svg viewBox="0 0 52 52" aria-hidden="true"><path d="M14 27.5l8.5 8.5L38.5 18" /></svg></div>
+          </div>
+          <p className="airdrop-title">Saved to your device</p>
+          <p className="airdrop-sub">{doneInfo.name} · {doneInfo.size}</p>
+        </div>
+      )}
     </main>
   )
 }
