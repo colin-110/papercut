@@ -217,3 +217,65 @@ body.is-reordering, body.is-reordering * { cursor: grabbing !important; user-sel
 .airdrop-actions button.primary { background: var(--coral); border-color: var(--coral); color: #fff; }
 .airdrop-actions button.primary:hover { background: color-mix(in srgb, var(--coral) 88%, #000); }
 @media (max-width: 760px) { .drag-handle { padding-right: 2px; } .toast { bottom: 16px; } }
+
+/* ===== phones & touch ===== */
+button, [role='button'], summary, select, input { touch-action: manipulation; }
+.camera-button, .mobile-bar { display: none; }
+.app-shell { min-height: 100dvh; padding-left: max(48px, env(safe-area-inset-left)); padding-right: max(48px, env(safe-area-inset-right)); }
+@media (hover: none) {
+  .format-grid button:hover:not(.selected) { transform: none; border-color: var(--line); }
+  .export-button:hover:not(:disabled) { transform: none; box-shadow: none; background: var(--coral); }
+  .icon-button:hover { transform: none; color: var(--muted); }
+  .brand:hover .brand-mark { transform: none; }
+  .dropzone:hover::before { opacity: 0; }
+  .dropzone:hover { background: color-mix(in srgb, var(--paper) 55%, transparent); }
+  .file-row:hover .drag-handle { color: var(--faint); }
+  .drag-handle { opacity: .85; }
+}
+@media (pointer: coarse) {
+  .camera-button { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 12px; padding: 15px; border-radius: 16px; border: 1px solid var(--line); background: color-mix(in srgb, var(--coral) 10%, transparent); color: var(--ink); font: 15px var(--display); transition: transform .3s var(--ease), background-color .3s var(--ease); }
+  .camera-button span { color: var(--coral); font-size: 18px; }
+  .camera-button:active { transform: scale(.98); }
+  .row-actions button { min-width: 38px; min-height: 44px; }
+  .drag-handle { padding: 16px 10px 16px 0; font-size: 20px; }
+  .icon-button { min-width: 44px; min-height: 44px; }
+  .format-grid button { min-height: 62px; }
+  .range { height: 32px; }
+}
+@media (max-width: 760px) {
+  .app-shell { padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
+  .app-shell.has-bar { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .select-control, .text-control { font-size: 16px; }
+  /* cheaper rendering: no backdrop blur, calmer light, no tilt */
+  .dropzone, .control-panel, .privacy-pill, .toast, .airdrop, .page-drop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .dropzone { background: color-mix(in srgb, var(--paper) 80%, transparent); transform: none; scale: 1; }
+  .dropzone.is-dragging { transform: none; }
+  .control-panel { background: color-mix(in srgb, var(--paper) 88%, transparent); }
+  .airdrop { background: color-mix(in srgb, var(--paper) 90%, transparent); }
+  .ambient i { filter: blur(48px); }
+  .ambient i:nth-child(3) { display: none; }
+  .ambient i:nth-child(1) { width: 70vmax; height: 70vmax; }
+  .ambient i:nth-child(2) { width: 62vmax; height: 62vmax; }
+  h1 { font-size: clamp(46px, 14.5vw, 80px); }
+  .intro { padding-top: 40px; }
+  .toast { bottom: calc(88px + env(safe-area-inset-bottom)); }
+  footer { flex-direction: column; gap: 8px; }
+  .mobile-bar { position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 7000; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 10px 10px 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: color-mix(in srgb, var(--paper) 94%, transparent); box-shadow: 0 18px 40px -16px rgba(0,0,0,.5); animation: bar-in 700ms var(--ease) both; }
+  .mobile-bar p { margin: 0; color: var(--muted); font: 11px var(--mono); line-height: 1.5; }
+  .mobile-bar b { color: var(--ink); font-weight: 500; }
+  .mobile-bar i { color: var(--coral); font-style: normal; }
+  .mobile-bar button { flex-shrink: 0; min-width: 118px; padding: 13px 18px; border-radius: 14px; background: var(--coral); color: #fff; font: 15px var(--display); transition: transform .3s var(--ease), background-color .3s var(--ease); }
+  .mobile-bar button:active:not(:disabled) { transform: scale(.96); }
+  .mobile-bar button:disabled { background: var(--coral); opacity: .85; }
+  .bar-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--mint); transform-origin: left; transition: transform .4s var(--ease); }
+  .airdrop-actions { flex-wrap: wrap; justify-content: center; }
+}
+@keyframes bar-in { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+@media (max-width: 380px) { .mobile-bar p { display: none; } .mobile-bar button { flex: 1; } }
+@media (max-width: 760px) {
+  .section-heading { flex-wrap: wrap; gap: 10px 14px; }
+  .section-actions { gap: 16px; flex-wrap: wrap; }
+  .section-heading button, .section-heading span { white-space: nowrap; }
+  .empty-state { flex-wrap: wrap; gap: 6px 12px; padding: 24px 2px; }
+  .empty-state small { flex-basis: 100%; padding-left: 34px; line-height: 1.6; }
+}

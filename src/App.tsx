@@ -12,6 +12,7 @@ const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator
 const maxCanvasPixels = isAppleMobile ? 16_000_000 : 50_000_000
 const maxTotalBytes = 600 * 1024 * 1024
 const maxOutputPages = 500
+const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
 const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 const explain = (error: unknown, name?: string) => {
   const text = error instanceof Error ? error.message : String(error)
@@ -24,7 +25,7 @@ const explain = (error: unknown, name?: string) => {
 }
 type Petal = { dx: number; dy: number; rot: number; delay: number; size: number; color: string }
 const petalColors = ['#f17a64', '#79b89e', '#f3eee6', '#e9c46a']
-const makePetals = (): Petal[] => Array.from({ length: 34 }, (_, i) => {
+const makePetals = (): Petal[] => Array.from({ length: isTouch ? 20 : 34 }, (_, i) => {
   const angle = Math.random() * Math.PI * 2
   const distance = 110 + Math.random() * 190
   return { dx: Math.cos(angle) * distance, dy: Math.sin(angle) * distance * 0.8 - 40, rot: (Math.random() - 0.5) * 720, delay: Math.random() * 180, size: 6 + Math.random() * 7, color: petalColors[i % petalColors.length] }
@@ -42,7 +43,7 @@ function App() {
   const [notice, setNotice] = useState('')
   const [pageSize, setPageSize] = useState<keyof typeof pageSizes>('Original')
   const [fileName, setFileName] = useState('papercut-export')
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('papercut-theme') === 'dark')
+  const [darkMode, setDarkMode] = useState(() => { const saved = localStorage.getItem('papercut-theme'); return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches })
   const [watermark, setWatermark] = useState('')
   const [watermarkOpacity, setWatermarkOpacity] = useState(35)
   const [progress, setProgress] = useState(0)
@@ -64,6 +65,7 @@ function App() {
   const [pageDrag, setPageDrag] = useState(false)
   const addFilesRef = useRef<(files: File[]) => void>(() => {})
   const inputRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
   const revokeAsset = (asset: Asset) => { if (asset.preview) URL.revokeObjectURL(asset.preview); if (asset.thumb) URL.revokeObjectURL(asset.thumb) }
   const loadPdfMeta = async (id: number, file: File) => {
     try {
@@ -356,9 +358,11 @@ function App() {
     if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { applyTheme(); return }
     // a single soft diagonal sweep: dark rises from the bottom-left, light returns from the top-right
     sweepingRef.current = true
-    root.dataset.themeSweep = nextDark ? 'to-dark' : 'to-light'
+    const soft = isTouch || window.innerWidth < 760
+    root.dataset.themeSweep = soft ? 'fade' : nextDark ? 'to-dark' : 'to-light'
     const transition = doc.startViewTransition(applyTheme)
     transition.ready.then(() => {
+      if (soft) return
       root.animate(
         { maskPosition: nextDark ? ['100% 0%', '0% 100%'] : ['0% 100%', '100% 0%'] },
         { duration: 1500, easing: 'cubic-bezier(.45, 0, .2, 1)', pseudoElement: '::view-transition-new(root)', fill: 'both' },
@@ -611,16 +615,24 @@ function App() {
   return (
     <>
       <div className="ambient" aria-hidden="true"><i /><i /><i /></div>
+      {assets.length > 0 && !doneInfo && (
+        <div className={`mobile-bar ${isExporting ? 'busy' : ''}`}>
+          <p><b>{assets.length}</b> file{assets.length > 1 ? 's' : ''} <i>→</i> <b>{outputFormat === 'PDF' ? 'one PDF' : `${outputFormat} images`}</b></p>
+          <button type="button" disabled={isExporting} onClick={() => { navigator.vibrate?.(8); void exportFiles() }}>{isExporting ? `${progress}%` : `Export ${outputFormat}`}</button>
+          {isExporting && <span className="bar-progress" style={{ transform: `scaleX(${progress / 100})` }} />}
+        </div>
+      )}
       {undo && <div className="toast" role="status" key={undo.label + undo.items.length}><span>{undo.label}</span><button type="button" onClick={undoRemove}>Undo</button></div>}
       {pageDrag && <div className="page-drop" aria-hidden="true"><div><span>↥</span><strong>Drop to add</strong><small>PDF · JPG · PNG · WEBP · SVG</small></div></div>}
-    <main className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
+    <main className={`app-shell ${darkMode ? 'dark-mode' : ''} ${assets.length ? 'has-bar' : ''}`}>
       <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><div className="top-actions"><button className={`icon-button sound-button ${soundOn ? '' : 'is-off'}`} type="button" aria-label={soundOn ? 'Turn sounds off' : 'Turn sounds on'} title={soundOn ? 'Sounds on' : 'Sounds off'} onClick={toggleSound}>♪</button><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{darkMode ? '☼' : '◐'}</button></div></header>
       <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1 className="hero-title"><span className="word" style={{ '--i': 0 } as CSSProperties}>Photo</span> <span className="word" style={{ '--i': 1 } as CSSProperties}>to</span> <span className="word" style={{ '--i': 2 } as CSSProperties}>PDF</span><br /><em><span className="word" style={{ '--i': 3 } as CSSProperties}>converter.</span></em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">
         <div className="main-column">
           <div className={`dropzone ${isDragging ? 'is-dragging' : ''} ${landed ? 'landed' : ''}`} onMouseMove={(event) => { const box = event.currentTarget.getBoundingClientRect(); event.currentTarget.style.setProperty('--mx', `${event.clientX - box.left}px`); event.currentTarget.style.setProperty('--my', `${event.clientY - box.top}px`); event.currentTarget.style.setProperty('--tx', `${((event.clientY - box.top) / box.height - 0.5) * -3.2}deg`); event.currentTarget.style.setProperty('--ty', `${((event.clientX - box.left) / box.width - 0.5) * 3.2}deg`) }} onMouseLeave={(event) => { event.currentTarget.style.setProperty('--tx', '0deg'); event.currentTarget.style.setProperty('--ty', '0deg') }} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
-            <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.avif" multiple onChange={onInput} /><span className="drop-icon">↥</span><div><strong>Drop files to begin</strong><span>or browse from your device</span></div><small>PDF · JPG · PNG · WEBP · SVG · or paste with Ctrl V</small>
+            <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.avif" multiple onChange={onInput} /><span className="drop-icon">↥</span><div><strong>{isTouch ? 'Tap to add files' : 'Drop files to begin'}</strong><span>{isTouch ? 'photos, screenshots or PDFs' : 'or browse from your device'}</span></div><small>{isTouch ? 'PDF · JPG · PNG · WEBP · SVG' : 'PDF · JPG · PNG · WEBP · SVG · or paste with Ctrl V'}</small>
           </div>
+          <button className="camera-button" type="button" onClick={() => cameraRef.current?.click()}><span>◉</span> Scan with camera</button><input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onInput} />
           <div className="section-heading"><span>YOUR FILES <b>{assets.length.toString().padStart(2, '0')}</b></span><span className="section-actions"><button type="button" onClick={() => inputRef.current?.click()}>+ Add more</button>{assets.length > 1 && <><button type="button" onClick={sortByName}>A–Z</button><button type="button" onClick={reverseOrder}>Reverse</button></>}{assets.length > 0 && <button type="button" onClick={clearAll}>Clear all</button>}</span></div>
           {notice && <p className="intake-notice" role="status">{notice}</p>}
           <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className={`file-row ${leavingIds.includes(asset.id) ? 'is-leaving' : ''} ${clearing ? 'stagger' : ''}`} data-id={asset.id} style={{ '--n': index } as CSSProperties} key={asset.id}>{assets.length > 1 && <span className="drag-handle" title="Drag to reorder" aria-hidden="true" onPointerDown={(event) => startDrag(event, asset.id)}>⠿</span>}<div className={`file-thumb ${asset.preview || asset.thumb ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} style={{ transform: `rotate(${asset.rotation}deg)` }} alt="" /> : asset.thumb ? <img src={asset.thumb} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'}{asset.pages ? ` · ${asset.pages} page${asset.pages > 1 ? 's' : ''}` : ''} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Rotate ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => rotateAsset(asset.id)}>↻</button><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
@@ -638,7 +650,7 @@ function App() {
           </div>
           <p className="airdrop-title">Saved to your device</p>
           <p className="airdrop-sub">{doneInfo.name} · {doneInfo.size}</p>
-          <div className="airdrop-actions"><button type="button" onClick={(event) => { event.stopPropagation(); setDoneInfo((current) => current && { ...current, leaving: true }) }}>Done</button><button type="button" className="primary" onClick={(event) => { event.stopPropagation(); setDoneInfo((current) => current && { ...current, leaving: true }); startOver() }}>Convert more</button></div>
+          <div className="airdrop-actions">{typeof navigator.share === 'function' && <button type="button" onClick={(event) => { event.stopPropagation(); void navigator.share({ title: 'Papercut', text: 'Free photo to PDF converter that runs privately in your browser.', url: window.location.origin }).catch(() => {}) }}>Share</button>}<button type="button" onClick={(event) => { event.stopPropagation(); setDoneInfo((current) => current && { ...current, leaving: true }) }}>Done</button><button type="button" className="primary" onClick={(event) => { event.stopPropagation(); setDoneInfo((current) => current && { ...current, leaving: true }); startOver() }}>Convert more</button></div>
         </div>
       )}
     </main>
