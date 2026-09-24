@@ -6,7 +6,12 @@ body { margin: 0; min-width: 320px; background: radial-gradient(circle at 85% 10
 :root[data-theme='dark'] body { background: var(--paper); }
 #root { min-height: 100vh; }
 
-.theme-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 9999; pointer-events: none; }
+/* theme change: the new theme is revealed by one soft diagonal gradient sweep (position is animated from App.tsx) */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; -webkit-mask-size: 300% 300%; mask-size: 300% 300%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+:root[data-theme-sweep='to-dark']::view-transition-new(root) { -webkit-mask-image: linear-gradient(to top right, #000 34%, transparent 66%); mask-image: linear-gradient(to top right, #000 34%, transparent 66%); -webkit-mask-position: 100% 0%; mask-position: 100% 0%; }
+:root[data-theme-sweep='to-light']::view-transition-new(root) { -webkit-mask-image: linear-gradient(to bottom left, #000 34%, transparent 66%); mask-image: linear-gradient(to bottom left, #000 34%, transparent 66%); -webkit-mask-position: 0% 100%; mask-position: 0% 100%; }
 
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
