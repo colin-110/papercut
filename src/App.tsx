@@ -1,17 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
-import { PDFDocument } from 'pdf-lib'
-import JSZip from 'jszip'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'
 import './Papercut.css'
 
 type Asset = { id: number; file: File; preview: string | null }
 const formatOptions = ['PDF', 'JPG', 'PNG', 'WEBP']
 const maxFileSize = 250 * 1024 * 1024
 const supportedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg']
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
-
 function App() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [outputFormat, setOutputFormat] = useState('PDF')
@@ -68,6 +62,9 @@ function App() {
   }
 
   const pdfToCanvases = async (file: File) => {
+    const pdfjsLib = await import('pdfjs-dist')
+    const pdfWorker = await import('pdfjs-dist/build/pdf.worker.mjs?url')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker.default
     const pdfDocument = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise
     const canvases: HTMLCanvasElement[] = []
     for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
@@ -83,6 +80,7 @@ function App() {
   }
 
   const exportPdf = async () => {
+    const { PDFDocument } = await import('pdf-lib')
     const output = await PDFDocument.create()
     for (const asset of assets) {
       if (isPdf(asset.file)) {
@@ -102,6 +100,7 @@ function App() {
   }
 
   const exportImages = async () => {
+    const JSZip = (await import('jszip')).default
     const mime = outputFormat === 'JPG' ? 'image/jpeg' : outputFormat === 'WEBP' ? 'image/webp' : 'image/png'
     const extension = outputFormat.toLowerCase()
     const convertedPages: Blob[] = []
@@ -140,7 +139,7 @@ function App() {
   return (
     <main className="app-shell">
       <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label="Open settings">•••</button></header>
-      <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1>Make files<br /><em>move.</em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
+      <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1>Photo to PDF<br /><em>converter.</em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">
         <div className="main-column">
           <div className={`dropzone ${isDragging ? 'is-dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
@@ -152,7 +151,7 @@ function App() {
         </div>
         <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div><label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div><button className={`export-button ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={exportFiles}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
       </section>
-      <section className="seo-content" aria-label="About Papercut"><div><p className="eyebrow">BUILT FOR THE BROWSER</p><h2>Photo to PDF conversion<br /><em>without the upload.</em></h2></div><div className="seo-copy"><p>Turn JPG, PNG, WEBP, GIF, or SVG images into a PDF, or convert PDF pages back to JPG, PNG, or WEBP. Papercut processes files locally on your device, so your documents do not need to leave your browser.</p><div className="faq-grid"><details><summary>Is Papercut free?</summary><p>Yes. Papercut is free to use and has no account or upload requirement.</p></details><details><summary>Can I convert multiple photos?</summary><p>Yes. Add multiple images, arrange their order, and export them as one PDF or a ZIP of images.</p></details></div></div></section>
+      <section className="seo-content" aria-label="About Papercut"><div><p className="eyebrow">BUILT FOR THE BROWSER</p><h2>Photo to PDF conversion<br /><em>without the upload.</em></h2></div><div className="seo-copy"><p>Turn JPG, PNG, WEBP, GIF, or SVG images into a PDF, or convert PDF pages back to JPG, PNG, or WEBP. Papercut processes files locally on your device, so your documents do not need to leave your browser.</p><div className="trust-row"><span>✓ No account</span><span>✓ No upload</span><span>✓ Free to use</span></div><div className="faq-grid"><details><summary>Is Papercut free?</summary><p>Yes. Papercut is free to use and has no account or upload requirement.</p></details><details><summary>Can I convert multiple photos?</summary><p>Yes. Add multiple images, arrange their order, and export them as one PDF or a ZIP of images.</p></details></div></div></section>
       <footer><span>papercut / browser edition</span><span>{assets.length ? `${assets.length} file${assets.length > 1 ? 's' : ''} · ${formatBytes(totalSize)}` : 'ready when you are'} <i>●</i></span></footer>
     </main>
   )
