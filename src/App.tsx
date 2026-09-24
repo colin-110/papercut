@@ -39,12 +39,14 @@ function App() {
   const [landed, setLanded] = useState(false)
   const rowOffsets = useRef(new Map<number, number>())
   const previousCount = useRef(0)
+  const [pageDrag, setPageDrag] = useState(false)
+  const addFilesRef = useRef<(files: File[]) => void>(() => {})
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const theme = darkMode ? 'dark' : 'light'
     localStorage.setItem('papercut-theme', theme)
     document.documentElement.dataset.theme = theme
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#202522' : '#f2eee7')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#1e1d1a' : '#f2eee7')
   }, [darkMode])
   useEffect(() => {
     history.scrollRestoration = 'manual'
@@ -83,6 +85,37 @@ function App() {
     const timer = window.setTimeout(() => setLanded(false), 1100)
     return () => window.clearTimeout(timer)
   }, [assets.length])
+  useEffect(() => {
+    // paste images/PDFs from the clipboard, and accept drops anywhere on the page
+    const onPaste = (event: ClipboardEvent) => {
+      const files = Array.from(event.clipboardData?.files ?? [])
+      if (files.length) { event.preventDefault(); addFilesRef.current(files) }
+    }
+    let depth = 0
+    const hasFiles = (event: globalThis.DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files')
+    const onEnter = (event: globalThis.DragEvent) => { if (hasFiles(event)) { depth++; setPageDrag(true) } }
+    const onLeave = (event: globalThis.DragEvent) => { if (hasFiles(event)) { depth = Math.max(0, depth - 1); if (!depth) setPageDrag(false) } }
+    const onOver = (event: globalThis.DragEvent) => { if (hasFiles(event)) event.preventDefault() }
+    const onDropAnywhere = (event: globalThis.DragEvent) => {
+      if (!hasFiles(event)) return
+      event.preventDefault()
+      depth = 0
+      setPageDrag(false)
+      if (!(event.target as Element | null)?.closest?.('.dropzone')) addFilesRef.current(Array.from(event.dataTransfer?.files ?? []))
+    }
+    window.addEventListener('paste', onPaste)
+    window.addEventListener('dragenter', onEnter)
+    window.addEventListener('dragleave', onLeave)
+    window.addEventListener('dragover', onOver)
+    window.addEventListener('drop', onDropAnywhere)
+    return () => {
+      window.removeEventListener('paste', onPaste)
+      window.removeEventListener('dragenter', onEnter)
+      window.removeEventListener('dragleave', onLeave)
+      window.removeEventListener('dragover', onOver)
+      window.removeEventListener('drop', onDropAnywhere)
+    }
+  }, [])
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
   const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
@@ -94,6 +127,7 @@ function App() {
     setAssets((current) => [...current, ...supported.map((file, index) => ({ id: Date.now() + index + Math.random(), file, preview: !isPdf(file) ? URL.createObjectURL(file) : null, rotation: 0 }))])
     setExported(false)
   }
+  useEffect(() => { addFilesRef.current = addFiles })
   const onInput = (event: ChangeEvent<HTMLInputElement>) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = '' }
   const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setIsDragging(false); addFiles(Array.from(event.dataTransfer.files)) }
   const removeAssetNow = (id: number) => setAssets((current) => { const asset = current.find((item) => item.id === id); if (asset?.preview) URL.revokeObjectURL(asset.preview); return current.filter((item) => item.id !== id) })
@@ -321,13 +355,16 @@ function App() {
   const cancelExport = () => { cancelRef.current = true }
 
   return (
+    <>
+      <div className="ambient" aria-hidden="true"><i /><i /><i /></div>
+      {pageDrag && <div className="page-drop" aria-hidden="true"><div><span>↥</span><strong>Drop to add</strong><small>PDF · JPG · PNG · WEBP · SVG</small></div></div>}
     <main className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
       <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{darkMode ? '☼' : '◐'}</button></header>
       <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1 className="hero-title"><span className="word" style={{ '--i': 0 } as CSSProperties}>Photo</span> <span className="word" style={{ '--i': 1 } as CSSProperties}>to</span> <span className="word" style={{ '--i': 2 } as CSSProperties}>PDF</span><br /><em><span className="word" style={{ '--i': 3 } as CSSProperties}>converter.</span></em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">
         <div className="main-column">
-          <div className={`dropzone ${isDragging ? 'is-dragging' : ''} ${landed ? 'landed' : ''}`} onMouseMove={(event) => { const box = event.currentTarget.getBoundingClientRect(); event.currentTarget.style.setProperty('--mx', `${event.clientX - box.left}px`); event.currentTarget.style.setProperty('--my', `${event.clientY - box.top}px`) }} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
-            <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.svg" multiple onChange={onInput} /><span className="drop-icon">↥</span><div><strong>Drop files to begin</strong><span>or browse from your device</span></div><small>PDF · JPG · PNG · WEBP · SVG</small>
+          <div className={`dropzone ${isDragging ? 'is-dragging' : ''} ${landed ? 'landed' : ''}`} onMouseMove={(event) => { const box = event.currentTarget.getBoundingClientRect(); event.currentTarget.style.setProperty('--mx', `${event.clientX - box.left}px`); event.currentTarget.style.setProperty('--my', `${event.clientY - box.top}px`); event.currentTarget.style.setProperty('--tx', `${((event.clientY - box.top) / box.height - 0.5) * -3.2}deg`); event.currentTarget.style.setProperty('--ty', `${((event.clientX - box.left) / box.width - 0.5) * 3.2}deg`) }} onMouseLeave={(event) => { event.currentTarget.style.setProperty('--tx', '0deg'); event.currentTarget.style.setProperty('--ty', '0deg') }} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
+            <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.svg" multiple onChange={onInput} /><span className="drop-icon">↥</span><div><strong>Drop files to begin</strong><span>or browse from your device</span></div><small>PDF · JPG · PNG · WEBP · SVG · or paste with Ctrl V</small>
           </div>
           <div className="section-heading"><span>YOUR FILES <b>{assets.length.toString().padStart(2, '0')}</b></span><span className="section-actions"><button type="button" onClick={() => inputRef.current?.click()}>+ Add more</button>{assets.length > 0 && <button type="button" onClick={clearAll}>Clear all</button>}</span></div>
           {notice && <p className="intake-notice" role="status">{notice}</p>}
@@ -349,6 +386,7 @@ function App() {
         </div>
       )}
     </main>
+    </>
   )
 }
 
