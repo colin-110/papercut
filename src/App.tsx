@@ -25,7 +25,11 @@ function App() {
   const [progressLabel, setProgressLabel] = useState('')
   const cancelRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { localStorage.setItem('papercut-theme', darkMode ? 'dark' : 'light') }, [darkMode])
+  useEffect(() => {
+    const theme = darkMode ? 'dark' : 'light'
+    localStorage.setItem('papercut-theme', theme)
+    document.documentElement.dataset.theme = theme
+  }, [darkMode])
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
   const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
