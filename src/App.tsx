@@ -44,6 +44,15 @@ function App() {
   const rotateAsset = (id: number) => setAssets((current) => current.map((asset) => asset.id === id ? { ...asset, rotation: (asset.rotation + 90) % 360 } : asset))
   const clearAll = () => { assets.forEach((asset) => asset.preview && URL.revokeObjectURL(asset.preview)); setAssets([]); setNotice(''); setError(''); setExported(false) }
   const safeFileName = () => fileName.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'papercut-export'
+  const toggleTheme = () => {
+    const updateTheme = () => setDarkMode((current) => !current)
+    const transitionDocument = document as Document & { startViewTransition?: (update: () => void) => void }
+    if (transitionDocument.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      transitionDocument.startViewTransition(updateTheme)
+    } else {
+      updateTheme()
+    }
+  }
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -198,7 +207,7 @@ function App() {
 
   return (
     <main className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
-      <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={() => setDarkMode((current) => !current)}>{darkMode ? '☼' : '◐'}</button></header>
+      <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{darkMode ? '☼' : '◐'}</button></header>
       <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1>Photo to PDF<br /><em>converter.</em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">
         <div className="main-column">
