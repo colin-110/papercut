@@ -14,6 +14,31 @@ const maxCanvasPixels = isAppleMobile ? 16_000_000 : 50_000_000
 const maxTotalBytes = 600 * 1024 * 1024
 const maxOutputPages = 500
 const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+const jpegOrientation = (buffer: ArrayBuffer) => {
+  // 1 = upright. Anything else (or anything unreadable) goes through the canvas path so photos are never sideways.
+  try {
+    const view = new DataView(buffer)
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return 0
+    let offset = 2
+    while (offset + 4 < Math.min(view.byteLength, 1 << 17)) {
+      const marker = view.getUint16(offset)
+      if (marker === 0xffda) break
+      if (marker === 0xffe1 && view.getUint32(offset + 4) === 0x45786966) {
+        const tiff = offset + 10
+        const little = view.getUint16(tiff) === 0x4949
+        const ifd = tiff + view.getUint32(tiff + 4, little)
+        const count = view.getUint16(ifd, little)
+        for (let i = 0; i < count; i++) {
+          const entry = ifd + 2 + i * 12
+          if (view.getUint16(entry, little) === 0x0112) return view.getUint16(entry + 8, little)
+        }
+        return 1
+      }
+      offset += 2 + view.getUint16(offset + 2)
+    }
+    return 1
+  } catch { return 0 }
+}
 const tick = () => new Promise<void>((resolve) => window.setTimeout(resolve, 0))
 const explain = (error: unknown, name?: string) => {
   const text = error instanceof Error ? error.message : String(error)
@@ -115,7 +140,7 @@ function App() {
     const theme = darkMode ? 'dark' : 'light'
     localStorage.setItem('papercut-theme', theme)
     document.documentElement.dataset.theme = theme
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#1e1d1a' : '#f2eee7')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#202522' : '#f2eee7')
   }, [darkMode])
   useEffect(() => {
     history.scrollRestoration = 'manual'
@@ -506,24 +531,36 @@ function App() {
           if (output.getPageCount() > maxOutputPages) throw new Error(`That would make a PDF with more than ${maxOutputPages} pages. Split it into smaller batches.`)
           continue
         }
-        // photos become JPEG (small, fast); PNG/SVG/GIF stay lossless unless they are enormous
-        const lossy = /\.jpe?g$/i.test(asset.file.name) || asset.file.size > 12 * 1024 * 1024
+        const targetSize = pageSizes[pageSize]
+        const place = (page: ReturnType<typeof output.addPage>, image: Awaited<ReturnType<typeof output.embedJpg>>, width: number, height: number) => {
+          if (!targetSize) { page.drawImage(image, { x: 0, y: 0, width, height }); return }
+          const margin = 28
+          const scale = Math.min((targetSize[0] - margin * 2) / width, (targetSize[1] - margin * 2) / height)
+          page.drawImage(image, { x: (targetSize[0] - width * scale) / 2, y: (targetSize[1] - height * scale) / 2, width: width * scale, height: height * scale })
+        }
+        // fast path: an upright JPEG is embedded exactly as it is (no re-encoding, no quality loss, near-instant)
+        const isJpeg = asset.file.type === 'image/jpeg' || /\.jpe?g$/i.test(asset.file.name)
+        if (isJpeg && asset.rotation === 0 && !watermark.trim()) {
+          const raw = await asset.file.arrayBuffer()
+          if (jpegOrientation(raw) === 1) {
+            try {
+              const image = await output.embedJpg(raw)
+              place(output.addPage(targetSize ? [targetSize[0], targetSize[1]] : [image.width, image.height]), image, image.width, image.height)
+              continue
+            } catch { /* unusual JPEG: fall back to the canvas path below */ }
+          }
+        }
+        // everything else: photos become JPEG (small, fast); PNG/SVG/GIF stay lossless unless they are enormous
+        const lossy = isJpeg || asset.file.size > 12 * 1024 * 1024
         const canvas = await imageToCanvas(asset.file, asset.rotation, lossy)
         decorateCanvas(canvas)
-        const targetSize = pageSizes[pageSize]
         const page = output.addPage(targetSize ? [targetSize[0], targetSize[1]] : [canvas.width, canvas.height])
         const blob = lossy ? await canvasToBlob(canvas, 'image/jpeg', Math.min(0.95, Math.max(0.6, quality / 100))) : await canvasToBlob(canvas, 'image/png')
         const bytes = await blob.arrayBuffer()
         const image = lossy ? await output.embedJpg(bytes) : await output.embedPng(bytes)
         const [width, height] = [canvas.width, canvas.height]
         releaseCanvas(canvas)
-        if (!targetSize) {
-          page.drawImage(image, { x: 0, y: 0, width, height })
-        } else {
-          const margin = 28
-          const scale = Math.min((targetSize[0] - margin * 2) / width, (targetSize[1] - margin * 2) / height)
-          page.drawImage(image, { x: (targetSize[0] - width * scale) / 2, y: (targetSize[1] - height * scale) / 2, width: width * scale, height: height * scale })
-        }
+        place(page, image, width, height)
       } catch (fileError) {
         throw new Error(explain(fileError, asset.file.name))
       }
@@ -638,7 +675,6 @@ function App() {
 
   return (
     <>
-      <div className="ambient" aria-hidden="true"><i /><i /><i /></div>
       {cropJob && (
         <Cropper
           key={cropJob.file.name + cropJob.file.size + (cropJob.assetId ?? 'new')}
@@ -672,7 +708,7 @@ function App() {
           {notice && <p className="intake-notice" role="status">{notice}</p>}
           <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className={`file-row ${assets.length > 1 ? 'draggable' : ''} ${leavingIds.includes(asset.id) ? 'is-leaving' : ''} ${clearing ? 'stagger' : ''}`} onPointerDown={(event) => { if (event.pointerType === 'mouse' && event.button === 0 && !(event.target as Element).closest('button, .drag-handle')) startDrag(event, asset.id, true) }} data-id={asset.id} style={{ '--n': index } as CSSProperties} key={asset.id}>{assets.length > 1 && <span className="drag-handle" title="Drag to reorder" aria-hidden="true" onPointerDown={(event) => startDrag(event, asset.id)}>⠿</span>}<div className={`file-thumb ${asset.preview || asset.thumb ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} style={{ transform: `rotate(${asset.rotation}deg)` }} alt="" /> : asset.thumb ? <img src={asset.thumb} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'}{asset.pages ? ` · ${asset.pages} page${asset.pages > 1 ? 's' : ''}` : ''} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Crop ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => setCropJob({ file: asset.file, assetId: asset.id, queue: [] })}>✂</button><button type="button" aria-label={`Rotate ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => rotateAsset(asset.id)}>↻</button><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
         </div>
-        <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div>{outputFormat === 'PDF' && <div className="swap-in"><label className="field-label quality-label" htmlFor="page-size">PAGE SIZE</label><select className="select-control" id="page-size" value={pageSize} onChange={(event) => setPageSize(event.target.value as keyof typeof pageSizes)}><option>Original</option><option>A4</option><option>Letter</option></select></div>}<label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><label className="field-label quality-label" htmlFor="file-name">FILE NAME</label><input className="text-control" id="file-name" value={fileName} onChange={(event) => { setFileName(event.target.value); setExported(false) }} /><label className="field-label quality-label" htmlFor="watermark">WATERMARK <span>OPTIONAL</span></label><input className="text-control" id="watermark" placeholder="e.g. CONFIDENTIAL" value={watermark} onChange={(event) => setWatermark(event.target.value)} />{watermark && <><label className="field-label quality-label" htmlFor="watermark-opacity">WATERMARK OPACITY <output>{watermarkOpacity}%</output></label><input className="range" id="watermark-opacity" type="range" min="10" max="100" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></>}<div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div>{isExporting && <div className="progress-box"><div className="progress-label"><span>{progressLabel}</span><span>{progress}%</span></div><progress value={progress} max="100" /></div>}{assets.length > 0 && <p className="export-summary" key={`${assets.length}-${outputFormat}`}><b>{assets.length}</b> file{assets.length > 1 ? 's' : ''} · {formatBytes(totalSize)} <i>→</i> <b>{outputFormat === 'PDF' ? 'one PDF' : `${outputFormat} images`}</b></p>}<button className={`export-button ${isExporting ? 'is-busy' : ''} ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={(event) => { playExportLaunch(event); exportFiles() }}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{isExporting && <button className="cancel-button" type="button" onClick={cancelExport}>Cancel conversion</button>}{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
+        <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div>{outputFormat === 'PDF' && <div className="swap-in"><label className="field-label quality-label" htmlFor="page-size">PAGE SIZE</label><select className="select-control" id="page-size" value={pageSize} onChange={(event) => setPageSize(event.target.value as keyof typeof pageSizes)}><option>Original</option><option>A4</option><option>Letter</option></select></div>}{outputFormat !== 'PNG' && <div className="swap-in"><label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div></div>}<details className="advanced"><summary>More options</summary><label className="field-label quality-label" htmlFor="file-name">FILE NAME</label><input className="text-control" id="file-name" value={fileName} onChange={(event) => { setFileName(event.target.value); setExported(false) }} /><label className="field-label quality-label" htmlFor="watermark">WATERMARK <span>OPTIONAL</span></label><input className="text-control" id="watermark" placeholder="e.g. CONFIDENTIAL" value={watermark} onChange={(event) => setWatermark(event.target.value)} />{watermark && <><label className="field-label quality-label" htmlFor="watermark-opacity">WATERMARK OPACITY <output>{watermarkOpacity}%</output></label><input className="range" id="watermark-opacity" type="range" min="10" max="100" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></>}</details>{isExporting && <div className="progress-box"><div className="progress-label"><span>{progressLabel}</span><span>{progress}%</span></div><progress value={progress} max="100" /></div>}{assets.length > 0 && <p className="export-summary" key={`${assets.length}-${outputFormat}`}><b>{assets.length}</b> file{assets.length > 1 ? 's' : ''} · {formatBytes(totalSize)} <i>→</i> <b>{outputFormat === 'PDF' ? 'one PDF' : `${outputFormat} images`}</b></p>}<button className={`export-button ${isExporting ? 'is-busy' : ''} ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={(event) => { playExportLaunch(event); exportFiles() }}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{isExporting && <button className="cancel-button" type="button" onClick={cancelExport}>Cancel conversion</button>}{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
       </section>
       <section className="seo-content" aria-label="About Papercut"><div><p className="eyebrow">BUILT FOR THE BROWSER</p><h2>Photo to PDF conversion<br /><em>without the upload.</em></h2></div><div className="seo-copy"><p>Turn JPG, PNG, WEBP, GIF, or SVG images into a PDF, or convert PDF pages back to JPG, PNG, or WEBP. Papercut processes files locally on your device, so your documents do not need to leave your browser.</p><div className="trust-row"><span>✓ No account</span><span>✓ No upload</span><span>✓ Free to use</span></div><div className="faq-grid"><details><summary>Is Papercut free?</summary><p>Yes. Papercut is free to use and has no account or upload requirement.</p></details><details><summary>Can I convert multiple photos?</summary><p>Yes. Add multiple images, arrange their order, and export them as one PDF or a ZIP of images.</p></details></div></div></section>
       <footer><span>papercut / browser edition</span><span>{assets.length ? `${assets.length} file${assets.length > 1 ? 's' : ''} · ${formatBytes(totalSize)}` : 'ready when you are'} <i>●</i></span></footer>

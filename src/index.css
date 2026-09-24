@@ -1,9 +1,9 @@
-:root { --paper: #f2eee7; --ink: #202522; --muted: #7f8179; --line: #d9d3c9; --coral: #e65d48; --mint: #5b9d83; --display: 'Fraunces Variable', Georgia, 'Times New Roman', serif; --mono: 'IBM Plex Mono', 'Courier New', monospace; font-family: var(--display); color: var(--ink); background: var(--paper); font-synthesis: none; -webkit-font-smoothing: antialiased; }
+:root { --paper: #f2eee7; --ink: #202522; --muted: #7f8179; --line: #d9d3c9; --coral: #e65d48; --mint: #5b9d83; --display: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif; --serif: 'Fraunces Variable', Georgia, 'Times New Roman', serif; --mono: 'IBM Plex Mono', 'Courier New', monospace; font-family: var(--display); color: var(--ink); background: var(--paper); font-synthesis: none; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
-body { margin: 0; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; min-width: 320px; background: url('/grain.png'), radial-gradient(circle at 85% 10%, rgba(255,255,255,.72), transparent 28%), var(--paper); }
+body { margin: 0; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; min-width: 320px; background: radial-gradient(circle at 85% 10%, rgba(255,255,255,.72), transparent 28%), var(--paper); }
 :root { --faint: #aaa398; --dash: #c9c3b9; --drop-bg: rgba(255,255,255,.18); --drop-hover: #fff9f5; --field: rgba(255,255,255,.3); --disabled: #cfc8be; color-scheme: light; }
-:root[data-theme='dark'] { --paper: #1e1d1a; --ink: #f3eee6; --muted: #aaa79d; --line: #3c3a35; --faint: #7e7b73; --dash: #57544c; --drop-bg: rgba(255,255,255,.04); --drop-hover: rgba(241,122,100,.08); --field: rgba(255,255,255,.05); --disabled: #38362f; --coral: #f17a64; --mint: #79b89e; color-scheme: dark; }
-:root[data-theme='dark'] body { background: url('/grain.png'), var(--paper); }
+:root[data-theme='dark'] { --paper: #202522; --ink: #f3eee6; --muted: #aaa99f; --line: #414640; --faint: #7d8079; --dash: #565c55; --drop-bg: rgba(255,255,255,.04); --drop-hover: rgba(241,122,100,.08); --field: rgba(255,255,255,.05); --disabled: #3a403a; --coral: #f17a64; --mint: #79b89e; color-scheme: dark; }
+:root[data-theme='dark'] body { background: var(--paper); }
 #root { min-height: 100vh; min-height: 100dvh; }
 
 /* theme change: the new theme is revealed by one soft diagonal gradient sweep (position is animated from App.tsx) */
