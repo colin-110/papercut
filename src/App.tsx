@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, DragEvent, MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, CSSProperties, DragEvent, MouseEvent } from 'react'
 import { flushSync } from 'react-dom'
 import './Papercut.css'
 
@@ -7,6 +7,13 @@ type Asset = { id: number; file: File; preview: string | null; rotation: number 
 const formatOptions = ['PDF', 'JPG', 'PNG', 'WEBP']
 const maxFileSize = 250 * 1024 * 1024
 const supportedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg']
+type Petal = { dx: number; dy: number; rot: number; delay: number; size: number; color: string }
+const petalColors = ['#f17a64', '#79b89e', '#f3eee6', '#e9c46a']
+const makePetals = (): Petal[] => Array.from({ length: 34 }, (_, i) => {
+  const angle = Math.random() * Math.PI * 2
+  const distance = 110 + Math.random() * 190
+  return { dx: Math.cos(angle) * distance, dy: Math.sin(angle) * distance * 0.8 - 40, rot: (Math.random() - 0.5) * 720, delay: Math.random() * 180, size: 6 + Math.random() * 7, color: petalColors[i % petalColors.length] }
+})
 const pageSizes = { Original: null, A4: [595.28, 841.89], Letter: [612, 792] } as const
 function App() {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -15,7 +22,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exported, setExported] = useState(false)
-  const [doneInfo, setDoneInfo] = useState<{ name: string; size: string; leaving: boolean } | null>(null)
+  const [doneInfo, setDoneInfo] = useState<{ name: string; size: string; leaving: boolean; petals: Petal[] } | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [pageSize, setPageSize] = useState<keyof typeof pageSizes>('Original')
@@ -27,6 +34,11 @@ function App() {
   const [progressLabel, setProgressLabel] = useState('')
   const cancelRef = useRef(false)
   const sweepingRef = useRef(false)
+  const [leavingIds, setLeavingIds] = useState<number[]>([])
+  const [clearing, setClearing] = useState(false)
+  const [landed, setLanded] = useState(false)
+  const rowOffsets = useRef(new Map<number, number>())
+  const previousCount = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const theme = darkMode ? 'dark' : 'light'
@@ -51,6 +63,26 @@ function App() {
     const timer = window.setTimeout(() => setDoneInfo(null), 600)
     return () => window.clearTimeout(timer)
   }, [doneInfo?.leaving])
+  useLayoutEffect(() => {
+    const next = new Map<number, number>()
+    document.querySelectorAll<HTMLElement>('.file-row[data-id]').forEach((row) => {
+      const id = Number(row.dataset.id)
+      next.set(id, row.offsetTop)
+      const before = rowOffsets.current.get(id)
+      if (before !== undefined && Math.abs(before - row.offsetTop) > 1 && !row.classList.contains('is-leaving')) {
+        row.animate([{ transform: `translateY(${before - row.offsetTop}px)` }, { transform: 'translateY(0)' }], { duration: 650, easing: 'cubic-bezier(.22, 1, .36, 1)' })
+      }
+    })
+    rowOffsets.current = next
+  }, [assets, leavingIds])
+  useEffect(() => {
+    const grew = assets.length > previousCount.current
+    previousCount.current = assets.length
+    if (!grew) return
+    setLanded(true)
+    const timer = window.setTimeout(() => setLanded(false), 1100)
+    return () => window.clearTimeout(timer)
+  }, [assets.length])
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
   const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
@@ -64,10 +96,21 @@ function App() {
   }
   const onInput = (event: ChangeEvent<HTMLInputElement>) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = '' }
   const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setIsDragging(false); addFiles(Array.from(event.dataTransfer.files)) }
-  const removeAsset = (id: number) => setAssets((current) => { const asset = current.find((item) => item.id === id); if (asset?.preview) URL.revokeObjectURL(asset.preview); return current.filter((item) => item.id !== id) })
+  const removeAssetNow = (id: number) => setAssets((current) => { const asset = current.find((item) => item.id === id); if (asset?.preview) URL.revokeObjectURL(asset.preview); return current.filter((item) => item.id !== id) })
+  const removeAsset = (id: number) => {
+    if (leavingIds.includes(id)) return
+    setLeavingIds((current) => [...current, id])
+    window.setTimeout(() => { removeAssetNow(id); setLeavingIds((current) => current.filter((item) => item !== id)) }, 460)
+  }
   const moveAsset = (id: number, direction: -1 | 1) => setAssets((current) => { const index = current.findIndex((asset) => asset.id === id); const nextIndex = index + direction; if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current; const next = [...current]; [next[index], next[nextIndex]] = [next[nextIndex], next[index]]; return next })
   const rotateAsset = (id: number) => setAssets((current) => current.map((asset) => asset.id === id ? { ...asset, rotation: (asset.rotation + 90) % 360 } : asset))
-  const clearAll = () => { assets.forEach((asset) => asset.preview && URL.revokeObjectURL(asset.preview)); setAssets([]); setNotice(''); setError(''); setExported(false) }
+  const clearAllNow = () => { assets.forEach((asset) => asset.preview && URL.revokeObjectURL(asset.preview)); setAssets([]); setNotice(''); setError(''); setExported(false) }
+  const clearAll = () => {
+    if (clearing || !assets.length) return
+    setClearing(true)
+    setLeavingIds(assets.map((asset) => asset.id))
+    window.setTimeout(() => { clearAllNow(); setLeavingIds([]); setClearing(false) }, 460 + Math.min(assets.length, 8) * 50)
+  }
   const safeFileName = () => fileName.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'papercut-export'
   const toggleTheme = () => {
     if (sweepingRef.current) return
@@ -98,7 +141,8 @@ function App() {
     link.download = filename
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setDoneInfo({ name: filename, size: formatBytes(blob.size), leaving: false })
+    setDoneInfo({ name: filename, size: formatBytes(blob.size), leaving: false, petals: makePetals() })
+    navigator.vibrate?.([14, 50, 22])
   }
 
   const decorateCanvas = (canvas: HTMLCanvasElement) => {
@@ -279,17 +323,17 @@ function App() {
   return (
     <main className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
       <header className="topbar"><div className="brand"><span className="brand-mark">◒</span><span>papercut</span></div><div className="privacy-pill"><span className="status-dot" /> local-only processing</div><button className="icon-button" type="button" aria-label={`Use ${darkMode ? 'light' : 'dark'} theme`} onClick={toggleTheme}>{darkMode ? '☼' : '◐'}</button></header>
-      <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1>Photo to PDF<br /><em>converter.</em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
+      <section className="intro"><div><p className="eyebrow">PRIVATE DOCUMENT WORKSPACE <span>·</span> 01</p><h1 className="hero-title"><span className="word" style={{ '--i': 0 } as CSSProperties}>Photo</span> <span className="word" style={{ '--i': 1 } as CSSProperties}>to</span> <span className="word" style={{ '--i': 2 } as CSSProperties}>PDF</span><br /><em><span className="word" style={{ '--i': 3 } as CSSProperties}>converter.</span></em></h1></div><p className="intro-copy">A free photo to PDF converter and PDF image converter that works privately in your browser.</p></section>
       <section className="workspace">
         <div className="main-column">
-          <div className={`dropzone ${isDragging ? 'is-dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
+          <div className={`dropzone ${isDragging ? 'is-dragging' : ''} ${landed ? 'landed' : ''}`} onMouseMove={(event) => { const box = event.currentTarget.getBoundingClientRect(); event.currentTarget.style.setProperty('--mx', `${event.clientX - box.left}px`); event.currentTarget.style.setProperty('--my', `${event.clientY - box.top}px`) }} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
             <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.svg" multiple onChange={onInput} /><span className="drop-icon">↥</span><div><strong>Drop files to begin</strong><span>or browse from your device</span></div><small>PDF · JPG · PNG · WEBP · SVG</small>
           </div>
           <div className="section-heading"><span>YOUR FILES <b>{assets.length.toString().padStart(2, '0')}</b></span><span className="section-actions"><button type="button" onClick={() => inputRef.current?.click()}>+ Add more</button>{assets.length > 0 && <button type="button" onClick={clearAll}>Clear all</button>}</span></div>
           {notice && <p className="intake-notice" role="status">{notice}</p>}
-          <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className="file-row" key={asset.id}><div className={`file-thumb ${asset.preview ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} style={{ transform: `rotate(${asset.rotation}deg)` }} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Rotate ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => rotateAsset(asset.id)}>↻</button><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
+          <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className={`file-row ${leavingIds.includes(asset.id) ? 'is-leaving' : ''} ${clearing ? 'stagger' : ''}`} data-id={asset.id} style={{ '--n': index } as CSSProperties} key={asset.id}><div className={`file-thumb ${asset.preview ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} style={{ transform: `rotate(${asset.rotation}deg)` }} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Rotate ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => rotateAsset(asset.id)}>↻</button><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
         </div>
-        <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div>{outputFormat === 'PDF' && <><label className="field-label quality-label" htmlFor="page-size">PAGE SIZE</label><select className="select-control" id="page-size" value={pageSize} onChange={(event) => setPageSize(event.target.value as keyof typeof pageSizes)}><option>Original</option><option>A4</option><option>Letter</option></select></>}<label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><label className="field-label quality-label" htmlFor="file-name">FILE NAME</label><input className="text-control" id="file-name" value={fileName} onChange={(event) => { setFileName(event.target.value); setExported(false) }} /><label className="field-label quality-label" htmlFor="watermark">WATERMARK <span>OPTIONAL</span></label><input className="text-control" id="watermark" placeholder="e.g. CONFIDENTIAL" value={watermark} onChange={(event) => setWatermark(event.target.value)} />{watermark && <><label className="field-label quality-label" htmlFor="watermark-opacity">WATERMARK OPACITY <output>{watermarkOpacity}%</output></label><input className="range" id="watermark-opacity" type="range" min="10" max="100" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></>}<div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div>{isExporting && <div className="progress-box"><div className="progress-label"><span>{progressLabel}</span><span>{progress}%</span></div><progress value={progress} max="100" /></div>}<button className={`export-button ${isExporting ? 'is-busy' : ''} ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={(event) => { playExportLaunch(event); exportFiles() }}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{isExporting && <button className="cancel-button" type="button" onClick={cancelExport}>Cancel conversion</button>}{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
+        <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div>{outputFormat === 'PDF' && <div className="swap-in"><label className="field-label quality-label" htmlFor="page-size">PAGE SIZE</label><select className="select-control" id="page-size" value={pageSize} onChange={(event) => setPageSize(event.target.value as keyof typeof pageSizes)}><option>Original</option><option>A4</option><option>Letter</option></select></div>}<label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><label className="field-label quality-label" htmlFor="file-name">FILE NAME</label><input className="text-control" id="file-name" value={fileName} onChange={(event) => { setFileName(event.target.value); setExported(false) }} /><label className="field-label quality-label" htmlFor="watermark">WATERMARK <span>OPTIONAL</span></label><input className="text-control" id="watermark" placeholder="e.g. CONFIDENTIAL" value={watermark} onChange={(event) => setWatermark(event.target.value)} />{watermark && <><label className="field-label quality-label" htmlFor="watermark-opacity">WATERMARK OPACITY <output>{watermarkOpacity}%</output></label><input className="range" id="watermark-opacity" type="range" min="10" max="100" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></>}<div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div>{isExporting && <div className="progress-box"><div className="progress-label"><span>{progressLabel}</span><span>{progress}%</span></div><progress value={progress} max="100" /></div>}<button className={`export-button ${isExporting ? 'is-busy' : ''} ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={(event) => { playExportLaunch(event); exportFiles() }}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{isExporting && <button className="cancel-button" type="button" onClick={cancelExport}>Cancel conversion</button>}{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
       </section>
       <section className="seo-content" aria-label="About Papercut"><div><p className="eyebrow">BUILT FOR THE BROWSER</p><h2>Photo to PDF conversion<br /><em>without the upload.</em></h2></div><div className="seo-copy"><p>Turn JPG, PNG, WEBP, GIF, or SVG images into a PDF, or convert PDF pages back to JPG, PNG, or WEBP. Papercut processes files locally on your device, so your documents do not need to leave your browser.</p><div className="trust-row"><span>✓ No account</span><span>✓ No upload</span><span>✓ Free to use</span></div><div className="faq-grid"><details><summary>Is Papercut free?</summary><p>Yes. Papercut is free to use and has no account or upload requirement.</p></details><details><summary>Can I convert multiple photos?</summary><p>Yes. Add multiple images, arrange their order, and export them as one PDF or a ZIP of images.</p></details></div></div></section>
       <footer><span>papercut / browser edition</span><span>{assets.length ? `${assets.length} file${assets.length > 1 ? 's' : ''} · ${formatBytes(totalSize)}` : 'ready when you are'} <i>●</i></span></footer>
@@ -297,6 +341,7 @@ function App() {
         <div className={`airdrop ${doneInfo.leaving ? 'is-leaving' : ''}`} role="status" onClick={() => setDoneInfo((current) => current && { ...current, leaving: true })}>
           <div className="airdrop-stage">
             <i className="ring r1" /><i className="ring r2" /><i className="ring r3" />
+            {doneInfo.petals.map((petal, index) => <i className="petal" key={index} style={{ '--dx': `${petal.dx}px`, '--dy': `${petal.dy}px`, '--rot': `${petal.rot}deg`, '--delay': `${petal.delay}ms`, '--size': `${petal.size}px`, background: petal.color } as CSSProperties} />)}
             <div className="airdrop-core"><svg viewBox="0 0 52 52" aria-hidden="true"><path d="M14 27.5l8.5 8.5L38.5 18" /></svg></div>
           </div>
           <p className="airdrop-title">Saved to your device</p>
