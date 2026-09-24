@@ -1,4 +1,5 @@
 .app-shell { min-height: 100vh; max-width: 1240px; margin: 0 auto; padding: 0 48px; box-sizing: border-box; }
+.app-shell.dark-mode { --paper: #202522; --ink: #f3eee6; --muted: #aaa99f; --line: #414640; --coral: #f17a64; --mint: #79b89e; background: var(--paper); }
 .topbar { height: 76px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
 .brand { font: 700 22px var(--display); letter-spacing: -1px; color: var(--ink); display: flex; align-items: center; gap: 9px; }
 .brand-mark { color: var(--coral); font-size: 28px; line-height: 0; transform: rotate(-30deg); display: inline-block; }
