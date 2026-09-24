@@ -1,4 +1,25 @@
-# React + TypeScript + Vite
+# Papercut
+
+Private document conversion in your browser. Files stay on your device while Papercut converts images and PDFs locally.
+
+Repository: [github.com/colin-110/papercut](https://github.com/colin-110/papercut)
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+Run the checks with `npm run lint` and `npm run build`.
+
+## Privacy
+
+Papercut has no file-upload backend. Conversion uses browser APIs, PDF.js, pdf-lib, and JSZip locally.
+
+---
+
+This project uses React, TypeScript, Vite, and Oxlint.
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
