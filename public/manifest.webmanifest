@@ -1,0 +1,10 @@
+{
+  "name": "Papercut Photo to PDF Converter",
+  "short_name": "Papercut",
+  "description": "A private photo to PDF converter that runs in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2eee7",
+  "theme_color": "#e65d48",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
