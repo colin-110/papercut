@@ -57,3 +57,14 @@ footer { border-top: 1px solid var(--line); display: flex; justify-content: spac
 @keyframes airdrop-pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes airdrop-check { to { stroke-dashoffset: 0; } }
 @keyframes airdrop-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
+.export-button { position: relative; overflow: hidden; }
+.export-ripple { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: rgba(255,255,255,.4); pointer-events: none; animation: export-ripple 850ms cubic-bezier(.2, .6, .3, 1) forwards; }
+.export-button.is-busy:disabled { background: var(--coral); cursor: progress; }
+.export-button.is-busy::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); transform: translateX(-100%); animation: export-shimmer 1.3s ease-in-out infinite; pointer-events: none; }
+.export-button.is-busy span { display: inline-block; animation: export-arrow 1s cubic-bezier(.5, 0, .5, 1) infinite; }
+.fly-sheet { position: fixed; left: 0; top: 0; width: 26px; height: 34px; z-index: 9500; pointer-events: none; opacity: 0; border-radius: 2px; background: linear-gradient(135deg, var(--paper) 0 78%, var(--coral) 78%); border: 1px solid var(--line); box-shadow: 0 8px 22px rgba(0,0,0,.22); }
+.fly-sheet::before { content: ''; position: absolute; left: 5px; right: 5px; top: 8px; height: 10px; background: repeating-linear-gradient(var(--line) 0 1.5px, transparent 1.5px 4px); }
+@keyframes export-ripple { to { transform: scale(22); opacity: 0; } }
+@keyframes export-shimmer { to { transform: translateX(100%); } }
+@keyframes export-arrow { 0% { transform: translate(0, 0); opacity: 1; } 45% { transform: translate(6px, -6px); opacity: 0; } 46% { transform: translate(-6px, 6px); opacity: 0; } 100% { transform: translate(0, 0); opacity: 1; } }
