@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties, DragEvent, MouseEvent, PointerEvent } from 'react'
 import { flushSync } from 'react-dom'
+import Cropper from './Cropper'
 import './Papercut.css'
 
 type Asset = { id: number; file: File; preview: string | null; rotation: number; thumb?: string | null; pages?: number }
@@ -67,6 +68,7 @@ function App() {
   const addFilesRef = useRef<(files: File[]) => void>(() => {})
   const inputRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
+  const [cropJob, setCropJob] = useState<{ file: File; assetId?: number; queue: File[] } | null>(null)
   const revokeAsset = (asset: Asset) => { if (asset.preview) URL.revokeObjectURL(asset.preview); if (asset.thumb) URL.revokeObjectURL(asset.thumb) }
   const loadPdfMeta = async (id: number, file: File) => {
     try {
@@ -272,11 +274,23 @@ function App() {
     setLeavingIds(assets.map((asset) => asset.id))
     window.setTimeout(() => { clearAllNow(); setLeavingIds([]); setClearing(false); pushUndo(items, `Cleared ${items.length} file${items.length > 1 ? 's' : ''}`) }, 460 + Math.min(assets.length, 8) * 50)
   }
+  const replaceAssetFile = (id: number, file: File) => setAssets((list) => list.map((asset) => {
+    if (asset.id !== id) return asset
+    if (asset.preview) URL.revokeObjectURL(asset.preview)
+    return { ...asset, file, preview: URL.createObjectURL(file) }
+  }))
+  const nextCrop = (queue: File[]) => setCropJob(queue.length ? { file: queue[0], queue: queue.slice(1) } : null)
+  const onCameraInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    const photos = picked.filter((file) => file.size > 0 && /^image\/(jpeg|png|webp|gif|avif|bmp)/.test(file.type || 'image/jpeg'))
+    if (photos.length) { nextCrop(photos); addFiles(picked.filter((file) => !photos.includes(file))) } else addFiles(picked)
+  }
   const startOver = () => { assets.forEach(revokeAsset); undoRef.current?.items.forEach((item) => revokeAsset(item.asset)); undoRef.current = null; setUndo(null); setAssets([]); setNotice(''); setError(''); setExported(false) }
   const sortByName = () => setAssets((list) => [...list].sort((x, y) => x.file.name.localeCompare(y.file.name, undefined, { numeric: true })))
   const reverseOrder = () => setAssets((list) => [...list].reverse())
   const toggleSound = () => { const next = !soundOn; soundRef.current = next; setSoundOn(next); localStorage.setItem('papercut-sound', next ? 'on' : 'off'); blip('add') }
-  const startDrag = (event: PointerEvent<HTMLElement>, id: number) => {
+  const startDrag = (event: PointerEvent<HTMLElement>, id: number, threshold = false) => {
     if (draggingRef.current || assets.length < 2 || leavingIds.length || event.button > 0) return
     event.preventDefault()
     draggingRef.current = true
@@ -288,15 +302,21 @@ function App() {
     const heights = rows.map((row) => row.offsetHeight)
     const centers = rows.map((_, i) => tops[i] + heights[i] / 2)
     const startY = event.clientY
+    const startX = event.clientX
     const startScroll = window.scrollY
     const handle = event.currentTarget
     let target = from
     let offset = 0
     handle.setPointerCapture(event.pointerId)
-    dragRow.classList.add('is-dragging')
-    document.body.classList.add('is-reordering')
-    rows.forEach((row, i) => { if (i !== from) row.style.transition = 'transform .38s cubic-bezier(.22, 1, .36, 1)' })
-    navigator.vibrate?.(6)
+    let active = false
+    const activate = () => {
+      active = true
+      dragRow.classList.add('is-dragging')
+      document.body.classList.add('is-reordering')
+      rows.forEach((row, i) => { if (i !== from) row.style.transition = 'transform .38s cubic-bezier(.22, 1, .36, 1)' })
+      navigator.vibrate?.(6)
+    }
+    if (!threshold) activate()
     const place = () => {
       offset = Math.min(Math.max(offset, tops[0] - tops[from]), tops[rows.length - 1] + heights[rows.length - 1] - heights[from] - tops[from])
       dragRow.style.transform = `translateY(${offset}px) scale(1.025)`
@@ -309,6 +329,10 @@ function App() {
       })
     }
     const onMove = (moveEvent: globalThis.PointerEvent) => {
+      if (!active) {
+        if (Math.abs(moveEvent.clientX - startX) + Math.abs(moveEvent.clientY - startY) < 6) return
+        activate()
+      }
       if (moveEvent.clientY > window.innerHeight - 70) window.scrollBy(0, 16)
       else if (moveEvent.clientY < 70) window.scrollBy(0, -16)
       offset = moveEvent.clientY - startY + (window.scrollY - startScroll)
@@ -320,6 +344,7 @@ function App() {
       if (finished) return
       finished = true
       listeners.abort()
+      if (!active) { draggingRef.current = false; return }
       if (cancelled) target = from
       const settled = target > from ? tops[target] + heights[target] - heights[from] : tops[target]
       dragRow.classList.remove('is-dragging')
@@ -614,6 +639,17 @@ function App() {
   return (
     <>
       <div className="ambient" aria-hidden="true"><i /><i /><i /></div>
+      {cropJob && (
+        <Cropper
+          key={cropJob.file.name + cropJob.file.size + (cropJob.assetId ?? 'new')}
+          file={cropJob.file}
+          fresh={cropJob.assetId === undefined}
+          maxPixels={maxCanvasPixels}
+          onApply={(cropped) => { if (cropJob.assetId !== undefined) replaceAssetFile(cropJob.assetId, cropped); else addFiles([cropped]); nextCrop(cropJob.queue) }}
+          onSkip={() => { addFiles([cropJob.file]); nextCrop(cropJob.queue) }}
+          onCancel={() => nextCrop(cropJob.queue)}
+        />
+      )}
       {assets.length > 0 && !doneInfo && (
         <div className={`mobile-bar ${isExporting ? 'busy' : ''}`}>
           <p><b>{assets.length}</b> file{assets.length > 1 ? 's' : ''} <i>→</i> <b>{outputFormat === 'PDF' ? 'one PDF' : `${outputFormat} images`}</b></p>
@@ -631,10 +667,10 @@ function App() {
           <div className={`dropzone ${isDragging ? 'is-dragging' : ''} ${landed ? 'landed' : ''}`} onMouseMove={(event) => { const zone = event.currentTarget; const { clientX, clientY } = event; if (spotlightFrame.current) return; spotlightFrame.current = requestAnimationFrame(() => { spotlightFrame.current = 0; const box = zone.getBoundingClientRect(); zone.style.setProperty('--mx', `${clientX - box.left}px`); zone.style.setProperty('--my', `${clientY - box.top}px`) }) }} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={onDrop} onClick={() => inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}>
             <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.svg,.bmp,.avif" multiple onChange={onInput} /><span className="drop-icon">↥</span><div><strong>{isTouch ? 'Tap to add files' : 'Drop files to begin'}</strong><span>{isTouch ? 'photos, screenshots or PDFs' : 'or browse from your device'}</span></div><small>{isTouch ? 'PDF · JPG · PNG · WEBP · SVG' : 'PDF · JPG · PNG · WEBP · SVG · or paste with Ctrl V'}</small>
           </div>
-          <button className="camera-button" type="button" onClick={() => cameraRef.current?.click()}><span>◉</span> Scan with camera</button><input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onInput} />
+          <button className="camera-button" type="button" onClick={() => cameraRef.current?.click()}><span>◉</span> Scan with camera</button><input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onCameraInput} />
           <div className="section-heading"><span>YOUR FILES <b>{assets.length.toString().padStart(2, '0')}</b></span><span className="section-actions"><button type="button" onClick={() => inputRef.current?.click()}>+ Add more</button>{assets.length > 1 && <><button type="button" onClick={sortByName}>A–Z</button><button type="button" onClick={reverseOrder}>Reverse</button></>}{assets.length > 0 && <button type="button" onClick={clearAll}>Clear all</button>}</span></div>
           {notice && <p className="intake-notice" role="status">{notice}</p>}
-          <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className={`file-row ${leavingIds.includes(asset.id) ? 'is-leaving' : ''} ${clearing ? 'stagger' : ''}`} data-id={asset.id} style={{ '--n': index } as CSSProperties} key={asset.id}>{assets.length > 1 && <span className="drag-handle" title="Drag to reorder" aria-hidden="true" onPointerDown={(event) => startDrag(event, asset.id)}>⠿</span>}<div className={`file-thumb ${asset.preview || asset.thumb ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} style={{ transform: `rotate(${asset.rotation}deg)` }} alt="" /> : asset.thumb ? <img src={asset.thumb} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'}{asset.pages ? ` · ${asset.pages} page${asset.pages > 1 ? 's' : ''}` : ''} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Rotate ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => rotateAsset(asset.id)}>↻</button><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
+          <div className="file-list">{assets.length === 0 ? <div className="empty-state"><span>✦</span><p>Your working area is clear.</p><small>Files stay in this browser tab until you export or remove them.</small></div> : assets.map((asset, index) => <article className={`file-row ${assets.length > 1 ? 'draggable' : ''} ${leavingIds.includes(asset.id) ? 'is-leaving' : ''} ${clearing ? 'stagger' : ''}`} onPointerDown={(event) => { if (event.pointerType === 'mouse' && event.button === 0 && !(event.target as Element).closest('button, .drag-handle')) startDrag(event, asset.id, true) }} data-id={asset.id} style={{ '--n': index } as CSSProperties} key={asset.id}>{assets.length > 1 && <span className="drag-handle" title="Drag to reorder" aria-hidden="true" onPointerDown={(event) => startDrag(event, asset.id)}>⠿</span>}<div className={`file-thumb ${asset.preview || asset.thumb ? 'image-thumb' : 'pdf-thumb'}`}>{asset.preview ? <img src={asset.preview} style={{ transform: `rotate(${asset.rotation}deg)` }} alt="" /> : asset.thumb ? <img src={asset.thumb} alt="" /> : <span>PDF</span>}</div><div className="file-meta"><strong>{asset.file.name}</strong><span>{isPdf(asset.file) ? 'PDF' : asset.file.name.split('.').pop()?.toUpperCase() || 'IMAGE'}{asset.pages ? ` · ${asset.pages} page${asset.pages > 1 ? 's' : ''}` : ''} · {formatBytes(asset.file.size)}</span></div><span className="file-number">{String(index + 1).padStart(2, '0')}</span><div className="row-actions"><button type="button" aria-label={`Crop ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => setCropJob({ file: asset.file, assetId: asset.id, queue: [] })}>✂</button><button type="button" aria-label={`Rotate ${asset.file.name}`} disabled={isPdf(asset.file)} onClick={() => rotateAsset(asset.id)}>↻</button><button type="button" aria-label={`Move ${asset.file.name} up`} disabled={index === 0} onClick={() => moveAsset(asset.id, -1)}>↑</button><button type="button" aria-label={`Move ${asset.file.name} down`} disabled={index === assets.length - 1} onClick={() => moveAsset(asset.id, 1)}>↓</button><button type="button" className="remove-button" aria-label={`Remove ${asset.file.name}`} onClick={() => removeAsset(asset.id)}>×</button></div></article>)}</div>
         </div>
         <aside className="control-panel"><div className="panel-title"><span>OUTPUT SETTINGS</span><span className="spark">✳</span></div><label className="field-label">CONVERT TO</label><div className="format-grid">{formatOptions.map((format) => <button className={outputFormat === format ? 'selected' : ''} key={format} type="button" onClick={() => { setOutputFormat(format); setError(''); setExported(false) }}>{format}<span>{format === 'PDF' ? 'document' : 'image'}</span></button>)}</div>{outputFormat === 'PDF' && <div className="swap-in"><label className="field-label quality-label" htmlFor="page-size">PAGE SIZE</label><select className="select-control" id="page-size" value={pageSize} onChange={(event) => setPageSize(event.target.value as keyof typeof pageSizes)}><option>Original</option><option>A4</option><option>Letter</option></select></div>}<label className="field-label quality-label" htmlFor="quality">QUALITY <output>{quality}%</output></label><input className="range" id="quality" type="range" min="10" max="100" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><div className="range-labels"><span>smaller file</span><span>best quality</span></div><label className="field-label quality-label" htmlFor="file-name">FILE NAME</label><input className="text-control" id="file-name" value={fileName} onChange={(event) => { setFileName(event.target.value); setExported(false) }} /><label className="field-label quality-label" htmlFor="watermark">WATERMARK <span>OPTIONAL</span></label><input className="text-control" id="watermark" placeholder="e.g. CONFIDENTIAL" value={watermark} onChange={(event) => setWatermark(event.target.value)} />{watermark && <><label className="field-label quality-label" htmlFor="watermark-opacity">WATERMARK OPACITY <output>{watermarkOpacity}%</output></label><input className="range" id="watermark-opacity" type="range" min="10" max="100" value={watermarkOpacity} onChange={(event) => setWatermarkOpacity(Number(event.target.value))} /></>}<div className="divider" /><div className="option-row"><span><b>▣</b> Remove metadata</span><span className="toggle on">✓</span></div><div className="option-row"><span><b>⌁</b> Preserve page order</span><span className="toggle on">✓</span></div>{isExporting && <div className="progress-box"><div className="progress-label"><span>{progressLabel}</span><span>{progress}%</span></div><progress value={progress} max="100" /></div>}{assets.length > 0 && <p className="export-summary" key={`${assets.length}-${outputFormat}`}><b>{assets.length}</b> file{assets.length > 1 ? 's' : ''} · {formatBytes(totalSize)} <i>→</i> <b>{outputFormat === 'PDF' ? 'one PDF' : `${outputFormat} images`}</b></p>}<button className={`export-button ${isExporting ? 'is-busy' : ''} ${exported ? 'done' : ''}`} type="button" disabled={!assets.length || isExporting} onClick={(event) => { playExportLaunch(event); exportFiles() }}>{isExporting ? 'Converting locally…' : exported ? 'Downloaded ✓' : `Export ${outputFormat}`}<span>↗</span></button>{isExporting && <button className="cancel-button" type="button" onClick={cancelExport}>Cancel conversion</button>}{error && <p className="export-error" role="alert">{error}</p>}<p className="local-note"><span className="lock">⌑</span> Nothing leaves your device. Processing happens locally in your browser.</p></aside>
       </section>
