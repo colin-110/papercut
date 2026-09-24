@@ -102,18 +102,22 @@ function App() {
   }
 
   const exportImages = async () => {
-    const zip = new JSZip()
     const mime = outputFormat === 'JPG' ? 'image/jpeg' : outputFormat === 'WEBP' ? 'image/webp' : 'image/png'
     const extension = outputFormat.toLowerCase()
-    let pageIndex = 0
+    const convertedPages: Blob[] = []
     for (const asset of assets) {
       const canvases = isPdf(asset.file) ? await pdfToCanvases(asset.file) : [await imageToCanvas(asset.file)]
       for (const canvas of canvases) {
         const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Image encoding failed')), mime, quality / 100))
-        pageIndex += 1
-        zip.file(`page-${String(pageIndex).padStart(2, '0')}.${extension}`, blob)
+        convertedPages.push(blob)
       }
     }
+    if (convertedPages.length === 1) {
+      downloadBlob(convertedPages[0], `papercut-page-01.${extension}`)
+      return
+    }
+    const zip = new JSZip()
+    convertedPages.forEach((blob, index) => zip.file(`page-${String(index + 1).padStart(2, '0')}.${extension}`, blob))
     downloadBlob(await zip.generateAsync({ type: 'blob' }), `papercut-images-${extension}.zip`)
   }
 
