@@ -1,5 +1,8 @@
 .app-shell { min-height: 100vh; max-width: 1240px; margin: 0 auto; padding: 0 48px; box-sizing: border-box; }
 .app-shell.dark-mode { --paper: #202522; --ink: #f3eee6; --muted: #aaa99f; --line: #414640; --coral: #f17a64; --mint: #79b89e; background: var(--paper); }
+.app-shell > * { animation: rise-in 700ms cubic-bezier(.22, 1, .36, 1) both; }
+.app-shell > *:nth-child(2) { animation-delay: 70ms; }.app-shell > *:nth-child(3) { animation-delay: 140ms; }.app-shell > *:nth-child(4) { animation-delay: 210ms; }.app-shell > *:nth-child(5) { animation-delay: 280ms; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 .topbar { height: 76px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
 .brand { font: 700 22px var(--display); letter-spacing: -1px; color: var(--ink); display: flex; align-items: center; gap: 9px; }
 .brand-mark { color: var(--coral); font-size: 28px; line-height: 0; transform: rotate(-30deg); display: inline-block; }
@@ -16,6 +19,7 @@ h1 em { color: var(--coral); font-style: normal; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 52px; align-items: start; }
 .dropzone { border: 1px dashed #c9c3b9; min-height: 186px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--ink); transition: .2s; background: rgba(255,255,255,.18); cursor: pointer; }
 .dropzone:hover, .dropzone.is-dragging { border-color: var(--coral); background: #fff9f5; }
+.dropzone:hover .drop-icon, .dropzone.is-dragging .drop-icon { transform: translateY(-3px) rotate(-4deg); box-shadow: 0 7px 0 rgba(230,93,72,.12); }
 .dropzone input { display: none; }
 .drop-icon { width: 41px; height: 41px; display: grid; place-items: center; border: 1px solid var(--coral); color: var(--coral); border-radius: 50%; font-size: 22px; }
 .dropzone strong, .dropzone span { display: block; text-align: center; }.dropzone strong { font: 500 17px var(--display); }.dropzone div span { color: var(--muted); font-size: 12px; margin-top: 4px; }.dropzone small { color: #aaa398; font: 9px var(--mono); letter-spacing: 1px; margin-top: 8px; }

@@ -2,3 +2,17 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: radial-gradient(circle at 85% 10%, rgba(255,255,255,.72), transparent 28%), var(--paper); }
 #root { min-height: 100vh; }
+
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+::view-transition-new(root) { animation: diagonal-theme-reveal 720ms cubic-bezier(.22, 1, .36, 1); }
+
+@keyframes diagonal-theme-reveal {
+	from { clip-path: polygon(0 100%, 0 100%, 100% 0, 100% 0); }
+	to { clip-path: polygon(-20% 120%, -20% -20%, 120% -20%, 120% 120%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
