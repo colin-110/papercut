@@ -1,19 +1,23 @@
 :root { --paper: #f2eee7; --ink: #202522; --muted: #7f8179; --line: #d9d3c9; --coral: #e65d48; --mint: #5b9d83; --display: Georgia, 'Times New Roman', serif; --mono: 'Courier New', monospace; font-family: var(--display); color: var(--ink); background: var(--paper); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: radial-gradient(circle at 85% 10%, rgba(255,255,255,.72), transparent 28%), var(--paper); transition: background-color 500ms ease; }
-:root[data-theme='dark'] { background: #202522; }
-:root[data-theme='dark'] body { background: #202522; }
+:root { --faint: #aaa398; --dash: #c9c3b9; --drop-bg: rgba(255,255,255,.18); --drop-hover: #fff9f5; --field: rgba(255,255,255,.3); --disabled: #cfc8be; color-scheme: light; }
+:root[data-theme='dark'] { --paper: #202522; --ink: #f3eee6; --muted: #aaa99f; --line: #414640; --faint: #7d8079; --dash: #565c55; --drop-bg: rgba(255,255,255,.04); --drop-hover: rgba(241,122,100,.08); --field: rgba(255,255,255,.05); --disabled: #3a403a; --coral: #f17a64; --mint: #79b89e; color-scheme: dark; }
+:root[data-theme='dark'] body { background: var(--paper); }
 #root { min-height: 100vh; }
 
 ::view-transition-old(root),
 ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; -webkit-mask-size: 300% 300%; mask-size: 300% 300%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; animation: 900ms cubic-bezier(.65, 0, .35, 1) both; }
 
-::view-transition-new(root) { animation: diagonal-theme-reveal 720ms cubic-bezier(.22, 1, .36, 1); }
+/* dark: a soft diagonal wave sweeps up from the bottom-left corner */
+:root[data-theme-sweep='to-dark']::view-transition-new(root) { -webkit-mask-image: linear-gradient(to top right, #000 38%, transparent 62%); mask-image: linear-gradient(to top right, #000 38%, transparent 62%); animation-name: sweep-up; }
+/* light: the wave returns from the top-right corner back down to the bottom-left */
+:root[data-theme-sweep='to-light']::view-transition-new(root) { -webkit-mask-image: linear-gradient(to bottom left, #000 38%, transparent 62%); mask-image: linear-gradient(to bottom left, #000 38%, transparent 62%); animation-name: sweep-down; }
 
-@keyframes diagonal-theme-reveal {
-	from { clip-path: polygon(0 100%, 0 100%, 100% 0, 100% 0); }
-	to { clip-path: polygon(-20% 120%, -20% -20%, 120% -20%, 120% 120%); }
-}
+@keyframes sweep-up { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 100%; mask-position: 0 100%; } }
+@keyframes sweep-down { from { -webkit-mask-position: 0 100%; mask-position: 0 100%; } to { -webkit-mask-position: 100% 0; mask-position: 100% 0; } }
 
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }

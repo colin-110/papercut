@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
+import { flushSync } from 'react-dom'
 import './Papercut.css'
 
 type Asset = { id: number; file: File; preview: string | null; rotation: number }
@@ -29,6 +30,7 @@ function App() {
     const theme = darkMode ? 'dark' : 'light'
     localStorage.setItem('papercut-theme', theme)
     document.documentElement.dataset.theme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', darkMode ? '#202522' : '#f2eee7')
   }, [darkMode])
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.file.size, 0), [assets])
   const formatBytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -49,12 +51,18 @@ function App() {
   const clearAll = () => { assets.forEach((asset) => asset.preview && URL.revokeObjectURL(asset.preview)); setAssets([]); setNotice(''); setError(''); setExported(false) }
   const safeFileName = () => fileName.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'papercut-export'
   const toggleTheme = () => {
-    const updateTheme = () => setDarkMode((current) => !current)
-    const transitionDocument = document as Document & { startViewTransition?: (update: () => void) => void }
+    const nextDark = !darkMode
+    const root = document.documentElement
+    const applyTheme = () => {
+      flushSync(() => setDarkMode(nextDark))
+      root.dataset.theme = nextDark ? 'dark' : 'light'
+    }
+    const transitionDocument = document as Document & { startViewTransition?: (update: () => void) => { finished: Promise<void> } }
     if (transitionDocument.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      transitionDocument.startViewTransition(updateTheme)
+      root.dataset.themeSweep = nextDark ? 'to-dark' : 'to-light'
+      transitionDocument.startViewTransition(applyTheme).finished.finally(() => { delete root.dataset.themeSweep })
     } else {
-      updateTheme()
+      applyTheme()
     }
   }
   const downloadBlob = (blob: Blob, filename: string) => {
