@@ -191,3 +191,29 @@ footer { position: relative; }
   .dropzone { min-height: 190px; }
   .ambient i { filter: blur(70px); }
 }
+
+/* ===== reorder, undo, summary, sound ===== */
+.file-row { animation: row-in 650ms var(--ease) backwards; position: relative; }
+.file-row.is-leaving { animation: row-out 480ms var(--ease) forwards; }
+.drag-handle { color: var(--faint); font: 17px var(--mono); padding: 14px 6px 14px 0; cursor: grab; touch-action: none; user-select: none; opacity: .55; transition: opacity .3s var(--ease), color .3s var(--ease), transform .3s var(--ease); }
+.file-row:hover .drag-handle { opacity: 1; color: var(--coral); }
+.file-row.is-dragging { z-index: 6; cursor: grabbing; background: color-mix(in srgb, var(--paper) 92%, transparent); border-radius: 14px; box-shadow: 0 26px 50px -18px rgba(0,0,0,.45), 0 0 0 1px var(--coral); transition: box-shadow .3s var(--ease); overflow: visible; }
+.file-row.is-dragging .drag-handle { cursor: grabbing; color: var(--coral); opacity: 1; }
+body.is-reordering, body.is-reordering * { cursor: grabbing !important; user-select: none; }
+.top-actions { display: flex; align-items: center; gap: 2px; }
+.sound-button.is-off { opacity: .4; text-decoration: line-through; }
+.export-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; margin: 24px 0 -10px; color: var(--muted); font: 11px var(--mono); animation: fade-in 500ms var(--ease) both; }
+.export-summary b { color: var(--ink); font-weight: 500; }
+.export-summary i { color: var(--coral); font-style: normal; }
+.toast { position: fixed; left: 50%; bottom: 28px; z-index: 9200; display: flex; align-items: center; gap: 18px; max-width: min(92vw, 460px); padding: 13px 16px 15px; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--paper) 82%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 22px 50px -20px rgba(0,0,0,.5); color: var(--ink); font: 13px var(--display); animation: toast-in 600ms var(--ease) both; }
+.toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast button { background: transparent; color: var(--coral); font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 2px; }
+.toast::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--coral); transform-origin: left; animation: toast-timer 6500ms linear forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 24px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes toast-timer { to { transform: scaleX(0); } }
+.airdrop-actions { display: flex; gap: 10px; margin-top: 28px; animation: airdrop-rise 700ms var(--ease) 800ms both; }
+.airdrop-actions button { border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--ink); font: 13px var(--display); padding: 11px 22px; transition: background-color .3s var(--ease), transform .3s var(--ease); }
+.airdrop-actions button:hover { transform: translateY(-2px); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.airdrop-actions button.primary { background: var(--coral); border-color: var(--coral); color: #fff; }
+.airdrop-actions button.primary:hover { background: color-mix(in srgb, var(--coral) 88%, #000); }
+@media (max-width: 760px) { .drag-handle { padding-right: 2px; } .toast { bottom: 16px; } }
