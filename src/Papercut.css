@@ -331,3 +331,4 @@ body { font-family: var(--display); }
 .advanced[open] summary::before { transform: rotate(45deg); }
 .advanced summary:hover { color: var(--ink); }
 .advanced[open] > :not(summary) { animation: swap-in 500ms var(--ease) backwards; }
+.options-block { margin-top: 4px; }
