@@ -1,4 +1,4 @@
-const CACHE_NAME = 'papercut-shell-v1'
+const CACHE_NAME = 'papercut-shell-v2'
 const SHELL = ['/', '/index.html', '/favicon.svg', '/manifest.webmanifest']
 
 self.addEventListener('install', (event) => {
@@ -13,11 +13,13 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
-  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+  const isNavigation = event.request.mode === 'navigate'
+  event.respondWith((isNavigation ? fetch(event.request).catch(() => caches.match('/index.html')) : caches.match(event.request).then((cached) => cached || fetch(event.request))).then((response) => {
+    if (!response) throw new Error('Offline shell unavailable')
     if (event.request.url.startsWith(self.location.origin)) {
       const copy = response.clone()
       caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy))
     }
     return response
-  }).catch(() => caches.match('/index.html'))))
+  }))
 })
