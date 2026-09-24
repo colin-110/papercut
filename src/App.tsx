@@ -77,48 +77,19 @@ function App() {
       flushSync(() => setDarkMode(nextDark))
       root.dataset.theme = nextDark ? 'dark' : 'light'
     }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { applyTheme(); return }
+    const doc = document as Document & { startViewTransition?: (update: () => void) => { ready: Promise<void>; finished: Promise<void> } }
+    if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { applyTheme(); return }
+    // a single soft diagonal sweep: dark rises from the bottom-left, light returns from the top-right
     sweepingRef.current = true
-    // one wide, feathered diagonal wave drawn at half resolution: dark rises from the bottom-left, light returns from the top-right
-    const canvas = document.createElement('canvas')
-    canvas.className = 'theme-canvas'
-    canvas.width = Math.ceil(window.innerWidth / 2)
-    canvas.height = Math.ceil(window.innerHeight / 2)
-    document.body.append(canvas)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) { canvas.remove(); sweepingRef.current = false; applyTheme(); return }
-    const [w, h] = [canvas.width, canvas.height]
-    const rgb = nextDark ? '32, 37, 34' : '242, 238, 231'
-    const plateau = 0.9
-    const feather = 0.9
-    const reach = plateau + feather
-    const [lo, hi] = [-4, 5]
-    const smooth = (t: number) => t * t * (3 - 2 * t)
-    const draw = (center: number) => {
-      const [x0, y0, x1, y1] = nextDark ? [0, h, w, 0] : [w, 0, 0, h]
-      const gradient = ctx.createLinearGradient(x0 + (x1 - x0) * lo, y0 + (y1 - y0) * lo, x0 + (x1 - x0) * hi, y0 + (y1 - y0) * hi)
-      const stop = (position: number, alpha: number) => gradient.addColorStop((position - lo) / (hi - lo), `rgba(${rgb}, ${alpha})`)
-      for (let i = 0; i <= 10; i++) stop(center - reach + feather * (i / 10), smooth(i / 10))
-      for (let i = 0; i <= 10; i++) stop(center + plateau + feather * (i / 10), 1 - smooth(i / 10))
-      ctx.clearRect(0, 0, w, h)
-      ctx.fillStyle = gradient
-      ctx.fillRect(0, 0, w, h)
-    }
-    const ease = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2
-    const from = -reach
-    const to = 1 + reach
-    const duration = 1900
-    let swapped = false
-    const start = performance.now()
-    const frame = (now: number) => {
-      const t = Math.min(1, (now - start) / duration)
-      if (!swapped && t >= 0.5) { swapped = true; applyTheme() }
-      draw(from + (to - from) * ease(t))
-      if (t < 1) requestAnimationFrame(frame)
-      else { canvas.remove(); sweepingRef.current = false }
-    }
-    draw(from)
-    requestAnimationFrame(frame)
+    root.dataset.themeSweep = nextDark ? 'to-dark' : 'to-light'
+    const transition = doc.startViewTransition(applyTheme)
+    transition.ready.then(() => {
+      root.animate(
+        { maskPosition: nextDark ? ['100% 0%', '0% 100%'] : ['0% 100%', '100% 0%'] },
+        { duration: 1500, easing: 'cubic-bezier(.45, 0, .2, 1)', pseudoElement: '::view-transition-new(root)', fill: 'both' },
+      )
+    }).catch(() => {})
+    transition.finished.finally(() => { delete root.dataset.themeSweep; sweepingRef.current = false })
   }
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
