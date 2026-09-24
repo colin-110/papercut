@@ -1,0 +1,4 @@
+:root { --paper: #f2eee7; --ink: #202522; --muted: #7f8179; --line: #d9d3c9; --coral: #e65d48; --mint: #5b9d83; --display: Georgia, 'Times New Roman', serif; --mono: 'Courier New', monospace; font-family: var(--display); color: var(--ink); background: var(--paper); font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at 85% 10%, rgba(255,255,255,.72), transparent 28%), var(--paper); }
+#root { min-height: 100vh; }
