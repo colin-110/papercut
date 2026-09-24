@@ -15,6 +15,40 @@ For the simplest production launch, use Cloudflare Pages, Netlify, or Vercel:
 
 These services provide HTTPS and automatic deploys. Use a custom domain only after confirming the HTTPS certificate is active.
 
+## Vercel Free Deployment
+
+Vercel's Hobby plan is enough for this static application. It does not require a backend, database, or paid plan.
+
+1. Sign in at <https://vercel.com> with the GitHub account that owns the repository.
+2. Select **Add New...** and choose **Project**.
+3. Import `colin-110/papercut`.
+4. Keep the framework preset as **Vite**.
+5. Set the build command to `npm run build`.
+6. Set the output directory to `dist`.
+7. Set the Node.js version to `22` if Vercel asks.
+8. Click **Deploy**.
+
+Vercel will give the project a free HTTPS address such as:
+
+```text
+https://papercut.vercel.app
+```
+
+The exact subdomain depends on availability. You can change it in **Project Settings -> Domains**. Every branch and pull request can also receive a temporary preview URL.
+
+## Free URL Choices
+
+A paid domain is not required for a public launch. Good free addresses are:
+
+- Vercel: `papercut.vercel.app`
+- Cloudflare Pages: `papercut.pages.dev`
+- Netlify: `papercut.netlify.app`
+- GitHub Pages: `colin-110.github.io/papercut`
+
+These are provider subdomains, not custom domains that you own. A domain such as `papercut.com` or `papercut.app` normally requires an annual registration fee. Avoid unreliable "free domain" offers that request payment details, forced ads, or unclear ownership.
+
+After deployment, add the public URL to the repository description and README. Do not add analytics or third-party scripts just to measure traffic unless they fit the privacy promise.
+
 ## GitHub Pages
 
 GitHub Pages is also suitable, but project pages are served below `/papercut/`. Set the Vite base path to `/papercut/` before deploying there. If using a custom domain, use `/` instead.
