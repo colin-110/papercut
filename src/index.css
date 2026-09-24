@@ -6,13 +6,7 @@ body { margin: 0; min-width: 320px; background: radial-gradient(circle at 85% 10
 :root[data-theme='dark'] body { background: var(--paper); }
 #root { min-height: 100vh; }
 
-::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-::view-transition-old(root) { z-index: 1; }
-::view-transition-new(root) { z-index: 2; }
-
-/* fallback for browsers without view transitions: a diagonal curtain sweeps up from the bottom-left, the theme swaps underneath, then it exits to the top-right */
-.theme-sweep { position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
-.theme-sweep > i { position: absolute; inset: 0; will-change: clip-path; clip-path: polygon(0 100%, 0 max(0%, calc(100% - 200% * var(--p, 0))), max(0%, calc(200% * var(--p, 0) - 100%)) max(0%, calc(100% - 200% * var(--p, 0))), min(100%, calc(200% * var(--p, 0))) min(100%, calc(200% - 200% * var(--p, 0))), min(100%, calc(200% * var(--p, 0))) 100%); }
+.theme-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 9999; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
 	*, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
