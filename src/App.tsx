@@ -358,14 +358,12 @@ function App() {
     if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { applyTheme(); return }
     // a single soft diagonal sweep: dark rises from the bottom-left, light returns from the top-right
     sweepingRef.current = true
-    const soft = isTouch || window.innerWidth < 760
-    root.dataset.themeSweep = soft ? 'fade' : nextDark ? 'to-dark' : 'to-light'
+    root.dataset.themeSweep = nextDark ? 'to-dark' : 'to-light'
     const transition = doc.startViewTransition(applyTheme)
     transition.ready.then(() => {
-      if (soft) return
       root.animate(
         { maskPosition: nextDark ? ['100% 0%', '0% 100%'] : ['0% 100%', '100% 0%'] },
-        { duration: 1500, easing: 'cubic-bezier(.45, 0, .2, 1)', pseudoElement: '::view-transition-new(root)', fill: 'both' },
+        { duration: isTouch || window.innerWidth < 760 ? 1150 : 1500, easing: 'cubic-bezier(.45, 0, .2, 1)', pseudoElement: '::view-transition-new(root)', fill: 'both' },
       )
     }).catch(() => {})
     transition.finished.finally(() => { delete root.dataset.themeSweep; sweepingRef.current = false })
